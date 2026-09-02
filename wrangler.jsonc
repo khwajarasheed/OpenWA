@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openwa-core",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openwa-core",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "openwa-media-pending"
+    }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "INBOUND_QUEUE", "queue": "openwa-inbound" },
+      { "binding": "OUTBOUND_QUEUE", "queue": "openwa-outbound" },
+      { "binding": "MAINTENANCE_QUEUE", "queue": "openwa-maintenance" }
+    ],
+    "consumers": [
+      { "queue": "openwa-inbound", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" },
+      { "queue": "openwa-outbound", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" },
+      { "queue": "openwa-maintenance", "max_batch_size": 5, "max_retries": 5, "dead_letter_queue": "openwa-dlq" }
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "PHONE_DISPATCHER", "class_name": "PhoneDispatcher" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PhoneDispatcher"] }
+  ],
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "META_GRAPH_VERSION": "v24.0",
+    "PHONE_NUMBER_IDS": "",
+    "WABA_ID": ""
+  }
+}

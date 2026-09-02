@@ -1,0 +1,39 @@
+{
+  "name": "openwa-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-deployable WhatsApp Business API core for Cloudflare",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "setup": "node scripts/setup.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "cloudflare": {
+    "bindings": {
+      "CREDENTIAL_ENCRYPTION_KEY": {
+        "description": "Required. Generate a unique random value of at least 32 characters. OpenWA uses it only inside your Worker to encrypt Meta credentials stored in your D1 database."
+      },
+      "CF_ACCESS_AUD": {
+        "description": "Required for dashboard login. The Cloudflare Access application audience (AUD) tag for this OpenWA Worker."
+      },
+      "CF_ACCESS_TEAM_DOMAIN": {
+        "description": "Required for dashboard login. Your Cloudflare Access team domain, for example team.cloudflareaccess.com."
+      }
+    }
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260902.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.128.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "workerd@1.20260831.1": true
+  }
+}
