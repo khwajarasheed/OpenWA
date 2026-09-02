@@ -10,9 +10,9 @@ export interface Env {
   META_APP_SECRET: string;
   WEBHOOK_VERIFY_TOKEN: string;
   BOOTSTRAP_ADMIN_TOKEN: string;
-  META_GRAPH_VERSION: string;
-  PHONE_NUMBER_IDS: string;
-  WABA_ID: string;
+  META_GRAPH_VERSION?: string;
+  PHONE_NUMBER_IDS?: string;
+  WABA_ID?: string;
   CREDENTIAL_ENCRYPTION_KEY?: string;
   CF_ACCESS_AUD: string;
   CF_ACCESS_TEAM_DOMAIN: string;

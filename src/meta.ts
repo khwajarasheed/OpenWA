@@ -13,4 +13,4 @@ export const verifyMetaSignature = async (payload: string, signature: string | n
   return difference === 0;
 };
 
-export const graphUrl = (env: Env, path: string): string => `https://graph.facebook.com/${env.META_GRAPH_VERSION}/${path}`;
+export const graphUrl = (env: Env, path: string): string => `https://graph.facebook.com/${env.META_GRAPH_VERSION ?? 'v24.0'}/${path}`;

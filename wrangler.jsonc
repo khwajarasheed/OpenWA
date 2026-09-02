@@ -41,10 +41,5 @@
     { "tag": "v1", "new_sqlite_classes": ["PhoneDispatcher"] },
     { "tag": "v2", "new_sqlite_classes": ["InstallationSecrets"] }
   ],
-  "triggers": { "crons": ["*/5 * * * *"] },
-  "vars": {
-    "META_GRAPH_VERSION": "v24.0",
-    "PHONE_NUMBER_IDS": "",
-    "WABA_ID": ""
-  }
+  "triggers": { "crons": ["*/5 * * * *"] }
 }

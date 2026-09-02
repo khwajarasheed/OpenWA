@@ -226,7 +226,7 @@ function scopeFor(method: string, path: string): string {
 async function createMessage(request: Request, env: Env, principal: Principal): Promise<Response> {
   let input: MessageInput;
   try { input = await request.json<MessageInput>(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
-  const validation = validateMessage(input, env);
+  const validation = await validateMessage(input, env);
   if (validation) return error(422, 'validation_error', validation);
   const key = request.headers.get('idempotency-key');
   if (!key || key.length > 255) return error(422, 'idempotency_key_required', 'Provide an Idempotency-Key no longer than 255 characters');
@@ -256,10 +256,16 @@ async function createMessage(request: Request, env: Env, principal: Principal): 
   return json({ id: messageId, status: 'queued' }, 202);
 }
 
-function validateMessage(input: MessageInput, env: Env): string | null {
+async function validateMessage(input: MessageInput, env: Env): Promise<string | null> {
   if (!input || !input.phone_number_id || !input.to || !input.type) return 'phone_number_id, to, and type are required';
-  const allowed = env.PHONE_NUMBER_IDS.split(',').map((value) => value.trim()).filter(Boolean);
+  const allowed = (env.PHONE_NUMBER_IDS ?? '').split(',').map((value) => value.trim()).filter(Boolean);
   if (allowed.length && !allowed.includes(input.phone_number_id)) return 'phone_number_id is not configured for this installation';
+  if (!allowed.length) {
+    const connection = await env.DB.prepare(
+      `SELECT 1 FROM whatsapp_connections WHERE phone_number_id = ? AND status IN ('validated', 'connected') LIMIT 1`
+    ).bind(input.phone_number_id).first().catch(() => null);
+    if (!connection) return 'phone_number_id has not been connected in the OpenWA dashboard';
+  }
   if (!/^\d{6,20}$/.test(input.to)) return 'to must be a WhatsApp ID containing 6-20 digits';
   if (input.type === 'text' && (!input.text?.body || input.text.body.length > 4096)) return 'text.body is required and must be no longer than 4096 characters';
   if (input.type === 'template' && (!input.template?.name || !input.template.language?.code)) return 'template.name and template.language.code are required';
