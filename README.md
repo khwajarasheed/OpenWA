@@ -1,5 +1,8 @@
 # OpenWA CORE
 
+[![Verify CORE](https://github.com/khwajarasheed/OpenWA/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/khwajarasheed/OpenWA/actions/workflows/verify.yml)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/khwajarasheed/OpenWA)
+
 > Pre-release software. Do not use it for production customer data until Cloudflare/Meta integration and Cloudflare Access provisioning have been validated in a dedicated test account.
 
 OpenWA CORE is a self-deployable WhatsApp Business API for a customer-owned Cloudflare account. It connects directly to the customer’s Meta Cloud API credentials; it does not broker messages or add a charge to Meta message costs.
@@ -18,15 +21,9 @@ CORE intentionally uses at-least-once processing. Incoming webhook deliveries ar
 
 ## One-click customer deployment
 
-Publish this repository to a public GitHub or GitLab location and put a **Deploy to Cloudflare** button on the OpenWA website. Cloudflare creates a copy in the customer’s Git account, provisions the D1/R2/Queues/Durable Objects in the selected Cloudflare account, and deploys the Worker. The customer does not download the repository or run a terminal command.
+Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download or terminal is needed.
 
-After the public repository URL is known, replace `<owner>` below and use this button on the project site:
-
-```md
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/<owner>/OpenWA)
-```
-
-The Deploy screen must collect only these installation settings:
+The deployment screen collects these installation settings:
 
 - `CREDENTIAL_ENCRYPTION_KEY`: a unique random value of at least 32 characters. It is a Cloudflare Worker secret used only to encrypt Meta credentials in the customer’s D1 database.
 - `CF_ACCESS_AUD` and `CF_ACCESS_TEAM_DOMAIN`: the values for the Cloudflare Access application that protects the OpenWA dashboard.
@@ -35,7 +32,7 @@ After deployment, the customer opens the Worker URL. The first authenticated Clo
 
 The dashboard displays the callback URL and verification token for Meta. The customer completes the remaining Meta-owned action: register the callback, enter the verification token, and subscribe the app to the WABA. If the saved connection is already valid, the setup checklist is replaced with a Connected view.
 
-> Cloudflare Access provisioning is still a release gate. A standard Deploy Button provisions Workers resources but does not currently prove automatic creation of an Access policy or hand the deployer identity to Worker code. Do not market the flow as fully one-click identity provisioning until it has been validated in a fresh Cloudflare account.
+> Current limitation: the Deploy Button provisions Worker resources, but automated Cloudflare Access policy creation is still being validated. Do not use the dashboard with production data until that setup has been proven in a fresh Cloudflare account.
 
 ## Advanced operator deployment
 
@@ -60,22 +57,7 @@ npm run dev
 
 The Worker needs remote Cloudflare bindings for integration tests. Local tests should cover pure validation/auth/signature behavior; a Cloudflare test account verifies queues, D1, R2, and Durable Objects together.
 
-GitHub Actions runs the same type check, unit tests, and a Wrangler dry-run on every pull request and push to `main`.
-
-It also runs for pushes to `master` while the repository is being initialized.
-
-## Preparing a test push
-
-```bash
-git add .
-git status
-git commit -m "Initial OpenWA CORE test release"
-git branch -M main
-git remote add origin <your-github-repository-url>
-git push -u origin main
-```
-
-Before committing, confirm that `.dev.vars`, `.env`, private keys, Cloudflare tokens, Meta access tokens, and customer webhook payloads are absent from `git status`. The included `.gitignore` protects common local secret and build files, but it cannot remove a secret that was already committed.
+GitHub Actions runs the same type check, unit tests, and a Wrangler dry-run on every pull request and push to `main` (and `master` during initialization).
 
 ## API
 
