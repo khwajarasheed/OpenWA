@@ -4,6 +4,7 @@ export interface Env {
   INBOUND_QUEUE: Queue<QueueJob>;
   OUTBOUND_QUEUE: Queue<QueueJob>;
   MAINTENANCE_QUEUE: Queue<QueueJob>;
+  DEAD_LETTER_QUEUE: Queue<QueueJob>;
   PHONE_DISPATCHER: DurableObjectNamespace;
   INSTALLATION_SECRETS: DurableObjectNamespace;
   META_ACCESS_TOKEN: string;

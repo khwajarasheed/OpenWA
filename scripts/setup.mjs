@@ -126,6 +126,7 @@ Options:
       { binding: 'INBOUND_QUEUE', queue: names.inbound },
       { binding: 'OUTBOUND_QUEUE', queue: names.outbound },
       { binding: 'MAINTENANCE_QUEUE', queue: names.maintenance },
+      { binding: 'DEAD_LETTER_QUEUE', queue: names.dlq },
     ],
     consumers: [
       { queue: names.inbound, max_batch_size: 10, max_retries: 10, dead_letter_queue: names.dlq },

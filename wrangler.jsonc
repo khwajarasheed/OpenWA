@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-02",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "DB",
@@ -23,7 +24,8 @@
     "producers": [
       { "binding": "INBOUND_QUEUE", "queue": "openwa-inbound" },
       { "binding": "OUTBOUND_QUEUE", "queue": "openwa-outbound" },
-      { "binding": "MAINTENANCE_QUEUE", "queue": "openwa-maintenance" }
+      { "binding": "MAINTENANCE_QUEUE", "queue": "openwa-maintenance" },
+      { "binding": "DEAD_LETTER_QUEUE", "queue": "openwa-dlq" }
     ],
     "consumers": [
       { "queue": "openwa-inbound", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" },

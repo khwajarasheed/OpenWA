@@ -26,7 +26,7 @@ CORE intentionally uses at-least-once processing. Incoming webhook deliveries ar
 
 Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download or terminal is needed.
 
-The deployment screen has no OpenWA variables for the customer to fill. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1. WABA and phone-number IDs are entered later in the dashboard and stored in D1 as connection data.
+The deployment screen has no OpenWA variables for the customer to fill. Accept the automatically created D1 database, R2 bucket, three work queues, and dead-letter queue. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1. WABA and phone-number IDs are entered later in the dashboard and stored in D1 as connection data.
 
 After deployment, the customer opens the Worker URL. The first authenticated Cloudflare Access identity claims the `super_admin` role. The dashboard then guides the customer through entering and validating their Meta WABA, phone-number ID, access token, and app secret. Those Meta credentials are encrypted locally before D1 storage and are not sent to OpenWA-operated infrastructure.
 
