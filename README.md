@@ -1,6 +1,5 @@
 # OpenWA CORE
 
-[![Verify CORE](https://github.com/khwajarasheed/OpenWA/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/khwajarasheed/OpenWA/actions/workflows/verify.yml)
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/khwajarasheed/OpenWA)
 
 > Pre-release software. Do not use it for production customer data until Cloudflare/Meta integration and Cloudflare Access provisioning have been validated in a dedicated test account.
@@ -8,6 +7,10 @@
 OpenWA CORE is a self-deployable WhatsApp Business API for a customer-owned Cloudflare account. It connects directly to the customer’s Meta Cloud API credentials; it does not broker messages or add a charge to Meta message costs.
 
 This repository provides signed Meta webhook ingress, D1 contact/conversation/message storage, queue-backed outbound dispatch, per-phone rate coordination through Durable Objects, text/template send APIs, template synchronization, local API tokens, a self-hosted dashboard, and guided WhatsApp connection onboarding.
+
+## Project website
+
+The OpenWA project landing page lives in [`landing/`](./landing). It is a separate static Cloudflare Pages site operated by the project owner; customers do not deploy it. See [`landing/README.md`](./landing/README.md) for deployment settings.
 
 ## Data flow
 
@@ -56,8 +59,6 @@ npm run dev
 ```
 
 The Worker needs remote Cloudflare bindings for integration tests. Local tests should cover pure validation/auth/signature behavior; a Cloudflare test account verifies queues, D1, R2, and Durable Objects together.
-
-GitHub Actions runs the same type check, unit tests, and a Wrangler dry-run on every pull request and push to `main` (and `master` during initialization).
 
 ## API
 
