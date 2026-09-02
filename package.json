@@ -14,19 +14,6 @@
     "test": "vitest run",
     "db:migrate": "wrangler d1 migrations apply DB --remote"
   },
-  "cloudflare": {
-    "bindings": {
-      "CREDENTIAL_ENCRYPTION_KEY": {
-        "description": "Required. Generate a unique random value of at least 32 characters. OpenWA uses it only inside your Worker to encrypt Meta credentials stored in your D1 database."
-      },
-      "CF_ACCESS_AUD": {
-        "description": "Required for dashboard login. The Cloudflare Access application audience (AUD) tag for this OpenWA Worker."
-      },
-      "CF_ACCESS_TEAM_DOMAIN": {
-        "description": "Required for dashboard login. Your Cloudflare Access team domain, for example team.cloudflareaccess.com."
-      }
-    }
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260902.1",
     "typescript": "^5.9.2",

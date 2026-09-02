@@ -26,16 +26,13 @@ CORE intentionally uses at-least-once processing. Incoming webhook deliveries ar
 
 Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download or terminal is needed.
 
-The deployment screen collects these installation settings:
-
-- `CREDENTIAL_ENCRYPTION_KEY`: a unique random value of at least 32 characters. It is a Cloudflare Worker secret used only to encrypt Meta credentials in the customer’s D1 database.
-- `CF_ACCESS_AUD` and `CF_ACCESS_TEAM_DOMAIN`: the values for the Cloudflare Access application that protects the OpenWA dashboard.
+The deployment screen does not require a customer-managed OpenWA secret. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1.
 
 After deployment, the customer opens the Worker URL. The first authenticated Cloudflare Access identity claims the `super_admin` role. The dashboard then guides the customer through entering and validating their Meta WABA, phone-number ID, access token, and app secret. Those Meta credentials are encrypted locally before D1 storage and are not sent to OpenWA-operated infrastructure.
 
 The dashboard displays the callback URL and verification token for Meta. The customer completes the remaining Meta-owned action: register the callback, enter the verification token, and subscribe the app to the WABA. If the saved connection is already valid, the setup checklist is replaced with a Connected view.
 
-> Current limitation: the Deploy Button provisions Worker resources, but automated Cloudflare Access policy creation is still being validated. Do not use the dashboard with production data until that setup has been proven in a fresh Cloudflare account.
+> Current limitation: Cloudflare Access setup for the dashboard is still being validated. Do not use the dashboard with production data until that setup has been proven in a fresh Cloudflare account.
 
 ## Advanced operator deployment
 

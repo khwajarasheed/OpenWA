@@ -33,11 +33,13 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "PHONE_DISPATCHER", "class_name": "PhoneDispatcher" }
+      { "name": "PHONE_DISPATCHER", "class_name": "PhoneDispatcher" },
+      { "name": "INSTALLATION_SECRETS", "class_name": "InstallationSecrets" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["PhoneDispatcher"] }
+    { "tag": "v1", "new_sqlite_classes": ["PhoneDispatcher"] },
+    { "tag": "v2", "new_sqlite_classes": ["InstallationSecrets"] }
   ],
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {

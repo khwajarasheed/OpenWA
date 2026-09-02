@@ -4,10 +4,11 @@ import { activeMetaCredentials, encryptCredentials } from './credentials';
 import { dashboardHtml } from './dashboard';
 import { verifyMetaSignature, graphUrl } from './meta';
 import { PhoneDispatcher } from './phone-dispatcher';
+import { InstallationSecrets } from './installation-secrets';
 import type { Env, Principal, QueueJob } from './types';
 import { error, id, json, now, safeJson, sha256 } from './util';
 
-export { PhoneDispatcher };
+export { PhoneDispatcher, InstallationSecrets };
 
 type MessageInput = {
   phone_number_id: string;
@@ -176,8 +177,10 @@ async function dashboardState(user: DashboardUser, env: Env): Promise<Response> 
 
 async function webhookVerifyToken(env: Env): Promise<string> {
   if (env.WEBHOOK_VERIFY_TOKEN) return env.WEBHOOK_VERIFY_TOKEN;
-  if (!env.CREDENTIAL_ENCRYPTION_KEY) throw new Error('Webhook verification is not configured');
-  return (await sha256(`openwa:webhook:${env.CREDENTIAL_ENCRYPTION_KEY}`)).slice(0, 48);
+  const vault = env.INSTALLATION_SECRETS.get(env.INSTALLATION_SECRETS.idFromName('primary'));
+  const response = await vault.fetch('https://installation-secrets/webhook-token');
+  if (!response.ok) throw new Error('Webhook verification token is unavailable');
+  return response.text();
 }
 
 async function saveConnection(request: Request, user: DashboardUser, env: Env): Promise<Response> {

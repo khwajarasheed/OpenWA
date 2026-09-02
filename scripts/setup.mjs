@@ -171,7 +171,6 @@ Options:
   if (!hasFlag('--skip-secrets')) {
     const webhookToken = randomBytes(32).toString('base64url');
     const bootstrapToken = randomBytes(32).toString('base64url');
-    const credentialEncryptionKey = randomBytes(32).toString('base64url');
     console.log('\nUploading secrets directly to your Cloudflare account…');
     if (process.env.META_ACCESS_TOKEN) await putSecret('META_ACCESS_TOKEN', process.env.META_ACCESS_TOKEN);
     else await promptForWranglerSecret('META_ACCESS_TOKEN');
@@ -179,7 +178,6 @@ Options:
     else await promptForWranglerSecret('META_APP_SECRET');
     await putSecret('WEBHOOK_VERIFY_TOKEN', webhookToken);
     await putSecret('BOOTSTRAP_ADMIN_TOKEN', bootstrapToken);
-    await putSecret('CREDENTIAL_ENCRYPTION_KEY', credentialEncryptionKey);
     console.log('\nSave these generated values now; they are not written to disk:');
     console.log(`WEBHOOK_VERIFY_TOKEN=${webhookToken}`);
     console.log(`BOOTSTRAP_ADMIN_TOKEN=${bootstrapToken}`);
