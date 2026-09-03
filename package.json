@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "landing:dev": "wrangler pages dev landing --config landing/wrangler.jsonc",
-    "landing:deploy": "wrangler pages deploy landing --project-name openwa-landing --config landing/wrangler.jsonc",
+    "landing:deploy": "cd landing && wrangler pages deploy . --project-name openwa",
     "setup": "node scripts/setup.mjs",
     "cleanup": "node scripts/cleanup.mjs",
     "predeploy": "npm run check && npm test",
