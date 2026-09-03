@@ -1,4 +1,5 @@
 import type { Env } from './types';
+import { ownedArrayBuffer } from './util';
 
 export interface MetaCredentials {
   accessToken: string;
@@ -42,7 +43,11 @@ export const encryptCredentials = async (value: MetaCredentials, env: Env): Prom
 export const decryptCredentials = async (ciphertext: string, nonce: string, env: Env): Promise<StoredCredentials> => {
   if (!env.CREDENTIAL_ENCRYPTION_KEY) return credentialOperation('/decrypt', { ciphertext, nonce }, env) as Promise<StoredCredentials>;
   const key = await encryptionKey(env);
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64Url(nonce) }, key, fromBase64Url(ciphertext));
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: ownedArrayBuffer(fromBase64Url(nonce)) },
+    key,
+    ownedArrayBuffer(fromBase64Url(ciphertext)),
+  );
   const value = JSON.parse(decoder.decode(plaintext)) as StoredCredentials;
   if (!value.accessToken || !value.appSecret) throw new Error('Stored Meta credentials are invalid');
   return value;

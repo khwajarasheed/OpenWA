@@ -1,3 +1,5 @@
+import { ownedArrayBuffer } from './util';
+
 interface StoredCredentials {
   accessToken: string;
   appSecret: string;
@@ -43,7 +45,7 @@ export class InstallationSecrets implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     try {
       if (new URL(request.url).pathname === '/webhook-token') return new Response(this.webhookToken);
-      const key = await crypto.subtle.importKey('raw', fromBase64Url(this.keyMaterial), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+      const key = await crypto.subtle.importKey('raw', ownedArrayBuffer(fromBase64Url(this.keyMaterial)), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
       if (new URL(request.url).pathname === '/encrypt') {
         const value = await request.json<StoredCredentials>();
         if (!value.accessToken || !value.appSecret) return Response.json({ error: 'invalid_credentials' }, { status: 422 });
@@ -54,7 +56,11 @@ export class InstallationSecrets implements DurableObject {
       if (new URL(request.url).pathname === '/decrypt') {
         const input = await request.json<{ ciphertext?: string; nonce?: string }>();
         if (!input.ciphertext || !input.nonce) return Response.json({ error: 'invalid_ciphertext' }, { status: 422 });
-        const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64Url(input.nonce) }, key, fromBase64Url(input.ciphertext));
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: ownedArrayBuffer(fromBase64Url(input.nonce)) },
+          key,
+          ownedArrayBuffer(fromBase64Url(input.ciphertext)),
+        );
         const value = JSON.parse(decoder.decode(plaintext)) as StoredCredentials;
         if (!value.accessToken || !value.appSecret) return Response.json({ error: 'invalid_credentials' }, { status: 422 });
         return Response.json(value);

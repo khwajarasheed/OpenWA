@@ -4,19 +4,30 @@ Run this only in a dedicated customer-owned Cloudflare test account and Meta tes
 
 ## Deployment gate
 
-1. Install dependencies and run `npm run check`, `npm test`, and `npx wrangler deploy --dry-run`.
-2. Create D1, R2, the three work queues, and DLQ as described in the root README.
-3. Apply the migration, configure the WABA ID/phone-number allowlist, set all four Worker secrets, and deploy.
-4. Confirm `GET /health`, `GET /ready`, and `GET /version` each return `200`.
-5. Register the deployed `/webhooks/meta` URL in Meta. A valid `hub.challenge` must return `200`; a wrong verification token must return `403`.
+1. In the source repository, run `npm run check`, `npm test`, and `npm run deploy -- --dry-run`.
+2. From a fresh GitHub and Cloudflare test account, use the README's Deploy to Cloudflare button. Do not clone the repository or pre-create resources.
+3. Confirm the deployment screen requests no OpenWA variable, encryption key, Meta credential, WABA ID, or phone-number ID.
+4. Keep the generated D1 database, R2 bucket, jobs queue, dead-letter queue, and Durable Object bindings selected. Leave whole-Worker Cloudflare Access protection off so Meta can reach `/webhooks/meta`. Confirm all three D1 migrations run and the Worker deploys without a partially updated trigger error.
+5. Confirm the deployment result presents a clickable Worker URL. Confirm `GET /health`, `GET /ready`, and `GET /version` each return `200`.
+6. Open the Worker URL, create the local owner, and enter the dashboard without setting up Cloudflare Access or running a command.
+7. Register the displayed `/webhooks/meta` URL and verification token in Meta and select the `messages` field. A valid `hub.challenge` must return `200`; a wrong verification token must return `403`. Confirm the dashboard detects successful endpoint verification.
+8. Enter a WABA ID, system-user token, and app secret in the dashboard. Confirm OpenWA lists the WABA's phone numbers, selects the sole result automatically or asks only when there are multiple, and subscribes the app to the WABA with the single connection action.
+9. Confirm the dashboard reaches Connected without a refresh, hides onboarding, and leaves a working **Manage connection** action.
 
 ## Security gate
 
-1. Send a synthetic POST with no `X-Hub-Signature-256`; expect `401`.
-2. Send a payload signed with a different app secret; expect `401`.
-3. Call `GET /v1/messages` with no bearer token; expect `401`.
-4. Use the bootstrap admin token to create a `messages:read` principal. Confirm it can read messages but receives `401` for `POST /v1/messages`.
-5. Confirm the one-time response containing a newly minted API token is not logged by the deployment or CI system.
+1. Before owner creation, confirm `GET /v1/dashboard/bootstrap` returns `initialized: false`; create the owner once and confirm a second setup request returns `409`.
+2. Confirm the owner session cookie is `Secure`, `HttpOnly`, and `SameSite=Strict`. Log out and confirm that session can no longer read `/v1/dashboard/state`.
+3. Confirm browser-side password derivation sends a 32-byte verifier rather than the plaintext password. Confirm D1 stores neither the password nor the verifier, only the verifier digest, random salt, and configured work factor.
+4. Attempt login with an incorrect password; it must return a generic `401` response without revealing owner details.
+5. Exceed the local failed-login threshold from one test address; confirm further attempts are blocked for the configured window without accepting another verifier.
+6. Send a cross-origin dashboard mutation and a mutation without JSON content type; expect `403`.
+7. Send a synthetic webhook POST with no `X-Hub-Signature-256`; expect `401`.
+8. Send a webhook payload signed with a different app secret; expect `401`.
+9. Call `GET /v1/messages` with no bearer token; expect `401`.
+10. As the local owner, create the first API token from the dashboard. Confirm it is displayed once and not recoverable from D1 because only its digest is stored.
+11. Use that administrator API token to create a `messages:read` principal. Confirm it can read messages but receives `401` for `POST /v1/messages`.
+12. Confirm the one-time response containing a newly minted API token is not logged by the deployment or CI system.
 
 ## Inbound-message gate
 

@@ -17,3 +17,9 @@ export const sha256 = async (value: string): Promise<string> => {
 export const now = (): string => new Date().toISOString();
 
 export const safeJson = (value: string): unknown => JSON.parse(value);
+
+export const ownedArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+};

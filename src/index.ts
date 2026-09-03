@@ -2,9 +2,10 @@ import { requirePrincipal } from './auth';
 import { accessIdentity } from './access';
 import { activeMetaCredentials, encryptCredentials } from './credentials';
 import { dashboardHtml } from './dashboard';
-import { verifyMetaSignature, graphUrl } from './meta';
+import { appSecretProof, verifyMetaSignature, graphUrl } from './meta';
 import { PhoneDispatcher } from './phone-dispatcher';
 import { InstallationSecrets } from './installation-secrets';
+import { createLocalOwner, installationInitialized, LOCAL_PASSWORD_ITERATIONS, localLoginParameters, localSessionUser, loginLocalOwner, logoutLocalSession } from './local-auth';
 import type { Env, Principal, QueueJob } from './types';
 import { error, id, json, now, safeJson, sha256 } from './util';
 
@@ -24,7 +25,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/webhooks/meta') return handleMetaWebhook(request, env);
-    if (url.pathname === '/' && request.method === 'GET') return new Response(dashboardHtml(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    if (url.pathname === '/' && request.method === 'GET') return dashboardResponse();
     if (url.pathname === '/health') return json({ status: 'ok', service: 'openwa-core' });
     if (url.pathname === '/ready') return ready(env);
     if (url.pathname === '/version') return json({ api: 'v1', core: '0.1.0' });
@@ -61,7 +62,7 @@ export default {
        ORDER BY created_at ASC LIMIT 100`
     ).bind(now()).all<{ id: string; phone_number_id: string }>();
     if (due.results.length) {
-      await env.OUTBOUND_QUEUE.sendBatch(due.results.map((job) => ({ body: { type: 'outbound_dispatch', jobId: job.id, phoneNumberId: job.phone_number_id } })));
+      await env.JOBS_QUEUE.sendBatch(due.results.map((job) => ({ body: { type: 'outbound_dispatch', jobId: job.id, phoneNumberId: job.phone_number_id } })));
     }
   },
 } satisfies ExportedHandler<Env, QueueJob>;
@@ -80,10 +81,17 @@ async function handleMetaWebhook(request: Request, env: Env): Promise<Response> 
     const url = new URL(request.url);
     if (url.searchParams.get('hub.mode') === 'subscribe' && url.searchParams.get('hub.verify_token') === await webhookVerifyToken(env)) {
       try {
-        await env.DB.prepare(
-          `UPDATE whatsapp_connections SET status = 'connected', webhook_verified_at = ?, updated_at = ?
-           WHERE id = (SELECT id FROM whatsapp_connections WHERE status = 'validated' ORDER BY updated_at DESC LIMIT 1)`
-        ).bind(now(), now()).run();
+        const timestamp = now();
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO webhook_endpoint_verification (id, verified_at) VALUES ('default', ?)
+             ON CONFLICT(id) DO UPDATE SET verified_at = excluded.verified_at`
+          ).bind(timestamp),
+          env.DB.prepare(
+            `UPDATE whatsapp_connections SET status = 'connected', webhook_verified_at = ?, updated_at = ?
+             WHERE id = (SELECT id FROM whatsapp_connections WHERE status = 'validated' ORDER BY updated_at DESC LIMIT 1)`
+          ).bind(timestamp, timestamp),
+        ]);
       } catch {
         // Legacy installations and webhook verification itself must not fail due
         // to an absent dashboard migration.
@@ -107,9 +115,9 @@ async function handleMetaWebhook(request: Request, env: Env): Promise<Response> 
   if (raw.length > 110_000) {
     const r2Key = `webhooks/${fingerprint}.json`;
     await env.MEDIA.put(r2Key, raw, { httpMetadata: { contentType: 'application/json' } });
-    await env.INBOUND_QUEUE.send({ type: 'inbound_webhook', fingerprint, r2Key });
+    await env.JOBS_QUEUE.send({ type: 'inbound_webhook', fingerprint, r2Key });
   } else {
-    await env.INBOUND_QUEUE.send({ type: 'inbound_webhook', fingerprint, payload });
+    await env.JOBS_QUEUE.send({ type: 'inbound_webhook', fingerprint, payload });
   }
   return new Response(null, { status: 200 });
 }
@@ -134,16 +142,85 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   return error(404, 'not_found', 'Route not found');
 }
 
-type DashboardUser = { id: string; access_subject: string; email: string | null; role: 'super_admin' | 'admin' | 'viewer' };
+type DashboardUser = { id: string; access_subject?: string; email: string | null; role: 'super_admin' | 'admin' | 'viewer' };
 
 async function handleDashboardApi(request: Request, env: Env, url: URL): Promise<Response> {
-  const identity = await accessIdentity(request, env);
-  if (!identity) return error(401, 'cloudflare_access_required', 'A valid Cloudflare Access identity is required');
-  const user = await dashboardUser(identity.subject, identity.email, env);
-  if (!user) return error(403, 'dashboard_not_authorized', 'This Cloudflare identity is not authorized for the OpenWA dashboard');
+  if (!['GET', 'HEAD'].includes(request.method) && !validDashboardMutation(request, url)) {
+    return error(403, 'invalid_request_origin', 'Dashboard changes must come from this OpenWA installation');
+  }
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/bootstrap') {
+    return json({ initialized: await installationInitialized(env) }, 200, { 'cache-control': 'no-store' });
+  }
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/login-parameters') {
+    const parameters = await localLoginParameters(env);
+    return parameters ? json(parameters, 200, { 'cache-control': 'no-store' }) : error(409, 'not_initialized', 'Create the owner account first');
+  }
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/setup') return setupLocalOwner(request, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/login') return loginDashboard(request, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/logout') {
+    return json({ status: 'signed_out' }, 200, { 'set-cookie': await logoutLocalSession(request, env) });
+  }
+
+  let user: DashboardUser | null = await localSessionUser(request, env);
+  if (!user) {
+    const identity = await accessIdentity(request, env);
+    if (identity) user = await dashboardUser(identity.subject, identity.email, env);
+  }
+  if (!user) return error(401, 'dashboard_login_required', 'Sign in to access the OpenWA dashboard');
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/state') return dashboardState(user, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/phone-numbers') return discoverPhoneNumbers(request, user, env);
   if (request.method === 'PUT' && url.pathname === '/v1/dashboard/connection') return saveConnection(request, user, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/api-tokens') return createDashboardApiToken(user, env);
   return error(404, 'not_found', 'Route not found');
+}
+
+function dashboardResponse(): Response {
+  return new Response(dashboardHtml(), {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'content-security-policy': "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'DENY',
+    },
+  });
+}
+
+function validDashboardMutation(request: Request, url: URL): boolean {
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return false;
+  const origin = request.headers.get('origin');
+  if (origin && origin !== url.origin) return false;
+  return request.headers.get('sec-fetch-site') !== 'cross-site';
+}
+
+async function setupLocalOwner(request: Request, env: Env): Promise<Response> {
+  let input: { email?: string; password_verifier?: string; password_salt?: string; password_iterations?: number };
+  try { input = await request.json(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
+  const validation = validateOwnerCredentials(input);
+  if (validation) return error(422, 'validation_error', validation);
+  const created = await createLocalOwner(input.email!, input.password_verifier!, input.password_salt!, input.password_iterations!, env);
+  if (!created) return error(409, 'already_initialized', 'The owner account has already been created');
+  return json({ user: created.user }, 201, { 'set-cookie': created.cookie, 'cache-control': 'no-store' });
+}
+
+async function loginDashboard(request: Request, env: Env): Promise<Response> {
+  let input: { password_verifier?: string };
+  try { input = await request.json(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
+  if (typeof input.password_verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.password_verifier)) {
+    return error(401, 'invalid_credentials', 'Password is incorrect');
+  }
+  const session = await loginLocalOwner(input.password_verifier, request, env);
+  if (!session) return error(401, 'invalid_credentials', 'Password is incorrect');
+  return json({ user: session.user }, 200, { 'set-cookie': session.cookie, 'cache-control': 'no-store' });
+}
+
+function validateOwnerCredentials(input: { email?: string; password_verifier?: string; password_salt?: string; password_iterations?: number }): string | null {
+  if (typeof input.email !== 'string' || input.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return 'Enter a valid owner email address';
+  if (typeof input.password_verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.password_verifier)
+    || typeof input.password_salt !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(input.password_salt)
+    || input.password_iterations !== LOCAL_PASSWORD_ITERATIONS) return 'The password verifier is invalid';
+  return null;
 }
 
 async function dashboardUser(subject: string, email: string | null, env: Env): Promise<DashboardUser | null> {
@@ -164,13 +241,17 @@ async function dashboardUser(subject: string, email: string | null, env: Env): P
 }
 
 async function dashboardState(user: DashboardUser, env: Env): Promise<Response> {
-  const connection = await env.DB.prepare(
-    `SELECT id, waba_id, phone_number_id, display_phone_number, status, last_validated_at, webhook_verified_at, last_error, updated_at
-     FROM whatsapp_connections ORDER BY updated_at DESC LIMIT 1`
-  ).first();
+  const [connection, webhookEndpoint] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id, waba_id, phone_number_id, display_phone_number, status, last_validated_at, webhook_verified_at, last_error, updated_at
+       FROM whatsapp_connections ORDER BY updated_at DESC LIMIT 1`
+    ).first(),
+    env.DB.prepare(`SELECT verified_at FROM webhook_endpoint_verification WHERE id = 'default'`).first<{ verified_at: string }>(),
+  ]);
   return json({
     user: { id: user.id, email: user.email, role: user.role },
     connection: connection ?? null,
+    webhook_endpoint_verified_at: webhookEndpoint?.verified_at ?? null,
     webhook_verify_token: user.role === 'super_admin' ? await webhookVerifyToken(env) : undefined,
   });
 }
@@ -187,30 +268,93 @@ async function saveConnection(request: Request, user: DashboardUser, env: Env): 
   if (!['super_admin', 'admin'].includes(user.role)) return error(403, 'forbidden', 'Only administrators can change connections');
   let input: { waba_id?: string; phone_number_id?: string; access_token?: string; app_secret?: string };
   try { input = await request.json(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
-  if (!input.waba_id?.match(/^\d{3,30}$/) || !input.phone_number_id?.match(/^\d{3,30}$/) || !input.access_token || !input.app_secret) {
+  if (typeof input.waba_id !== 'string' || !/^\d{3,30}$/.test(input.waba_id)
+    || typeof input.phone_number_id !== 'string' || !/^\d{3,30}$/.test(input.phone_number_id)
+    || typeof input.access_token !== 'string' || !input.access_token || input.access_token.length > 4096
+    || typeof input.app_secret !== 'string' || !input.app_secret || input.app_secret.length > 512) {
     return error(422, 'validation_error', 'WABA ID, phone number ID, access token, and app secret are required');
   }
   let displayPhoneNumber: string | null = null;
   try {
-    const response = await fetch(graphUrl(env, input.phone_number_id), { headers: { authorization: `Bearer ${input.access_token}` } });
+    const proof = await appSecretProof(input.access_token, input.app_secret);
+    const response = await fetch(graphUrl(env, `${input.phone_number_id}?fields=id,display_phone_number&appsecret_proof=${proof}`), { headers: { authorization: `Bearer ${input.access_token}` } });
     if (!response.ok) return error(422, 'meta_validation_failed', 'Meta rejected the phone number ID or access token');
     const meta = await response.json<{ display_phone_number?: string; id?: string }>();
     if (meta.id && meta.id !== input.phone_number_id) return error(422, 'meta_validation_failed', 'Meta returned a different phone number');
     displayPhoneNumber = meta.display_phone_number ?? null;
+    // The owner has already verified this Worker's URL as the Meta app callback.
+    // A plain WABA subscription is sufficient for the single-WABA v1 model.
+    const subscription = await fetch(graphUrl(env, `${input.waba_id}/subscribed_apps?appsecret_proof=${proof}`), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${input.access_token}` },
+    });
+    if (!subscription.ok) return error(422, 'meta_subscription_failed', 'The number is valid, but Meta could not subscribe this app to the WABA. Check the token permissions');
   } catch { return error(502, 'meta_unavailable', 'Could not validate credentials with Meta'); }
   let stored: { ciphertext: string; nonce: string };
   try { stored = await encryptCredentials({ accessToken: input.access_token, appSecret: input.app_secret }, env); }
   catch (cause) { return error(503, 'credential_storage_unavailable', String(cause)); }
   const timestamp = now();
+  const webhookEndpoint = await env.DB.prepare(
+    `SELECT verified_at FROM webhook_endpoint_verification WHERE id = 'default'`
+  ).first<{ verified_at: string }>();
+  const connectionStatus = webhookEndpoint ? 'connected' : 'validated';
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO whatsapp_connections (id, waba_id, phone_number_id, display_phone_number, credentials_ciphertext, credentials_nonce, status, last_validated_at, last_error, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'validated', ?, NULL, ?)
-       ON CONFLICT(phone_number_id) DO UPDATE SET waba_id = excluded.waba_id, display_phone_number = excluded.display_phone_number, credentials_ciphertext = excluded.credentials_ciphertext, credentials_nonce = excluded.credentials_nonce, status = 'validated', last_validated_at = excluded.last_validated_at, webhook_verified_at = NULL, last_error = NULL, updated_at = excluded.updated_at`
-    ).bind(id(), input.waba_id, input.phone_number_id, displayPhoneNumber, stored.ciphertext, stored.nonce, timestamp, timestamp),
-    audit(env, user.email ?? user.access_subject, 'whatsapp_connection.saved', 'whatsapp_connection', input.phone_number_id, { waba_id: input.waba_id }),
+      `INSERT INTO whatsapp_connections (id, waba_id, phone_number_id, display_phone_number, credentials_ciphertext, credentials_nonce, status, last_validated_at, webhook_verified_at, last_error, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+       ON CONFLICT(phone_number_id) DO UPDATE SET waba_id = excluded.waba_id, display_phone_number = excluded.display_phone_number, credentials_ciphertext = excluded.credentials_ciphertext, credentials_nonce = excluded.credentials_nonce,
+         status = CASE WHEN excluded.webhook_verified_at IS NOT NULL OR whatsapp_connections.webhook_verified_at IS NOT NULL THEN 'connected' ELSE 'validated' END,
+         last_validated_at = excluded.last_validated_at, webhook_verified_at = COALESCE(excluded.webhook_verified_at, whatsapp_connections.webhook_verified_at), last_error = NULL, updated_at = excluded.updated_at`
+    ).bind(id(), input.waba_id, input.phone_number_id, displayPhoneNumber, stored.ciphertext, stored.nonce, connectionStatus, timestamp, webhookEndpoint?.verified_at ?? null, timestamp),
+    audit(env, user.email ?? user.access_subject ?? user.id, 'whatsapp_connection.saved', 'whatsapp_connection', input.phone_number_id, { waba_id: input.waba_id }),
   ]);
-  return json({ status: 'validated', phone_number_id: input.phone_number_id, display_phone_number: displayPhoneNumber });
+  const saved = await env.DB.prepare(
+    `SELECT status, phone_number_id, display_phone_number FROM whatsapp_connections WHERE phone_number_id = ?`
+  ).bind(input.phone_number_id).first<{ status: string; phone_number_id: string; display_phone_number: string | null }>();
+  return json(saved ?? { status: connectionStatus, phone_number_id: input.phone_number_id, display_phone_number: displayPhoneNumber });
+}
+
+async function discoverPhoneNumbers(request: Request, user: DashboardUser, env: Env): Promise<Response> {
+  if (!['super_admin', 'admin'].includes(user.role)) return error(403, 'forbidden', 'Only administrators can discover phone numbers');
+  let input: { waba_id?: string; access_token?: string; app_secret?: string };
+  try { input = await request.json(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
+  if (typeof input.waba_id !== 'string' || !/^\d{3,30}$/.test(input.waba_id)
+    || typeof input.access_token !== 'string' || !input.access_token || input.access_token.length > 4096
+    || typeof input.app_secret !== 'string' || !input.app_secret || input.app_secret.length > 512) {
+    return error(422, 'validation_error', 'Enter a valid WABA ID, system-user access token, and Meta app secret');
+  }
+  try {
+    const proof = await appSecretProof(input.access_token, input.app_secret);
+    const response = await fetch(
+      graphUrl(env, `${input.waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating&limit=100&appsecret_proof=${proof}`),
+      { headers: { authorization: `Bearer ${input.access_token}` } },
+    );
+    if (!response.ok) return error(422, 'meta_validation_failed', 'Meta could not list phone numbers. Check the WABA ID, token, and token permissions');
+    const body = await response.json<{ data?: Array<{ id?: string; display_phone_number?: string; verified_name?: string; quality_rating?: string }> }>();
+    const phoneNumbers = (body.data ?? []).filter((item) => typeof item.id === 'string' && /^\d{3,30}$/.test(item.id)).map((item) => ({
+      id: item.id!,
+      display_phone_number: item.display_phone_number ?? null,
+      verified_name: item.verified_name ?? null,
+      quality_rating: item.quality_rating ?? null,
+    }));
+    return json({ phone_numbers: phoneNumbers }, 200, { 'cache-control': 'no-store' });
+  } catch {
+    return error(502, 'meta_unavailable', 'Could not reach Meta to list phone numbers');
+  }
+}
+
+async function createDashboardApiToken(user: DashboardUser, env: Env): Promise<Response> {
+  if (!['super_admin', 'admin'].includes(user.role)) return error(403, 'forbidden', 'Only administrators can create API tokens');
+  const token = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
+  const principalId = id();
+  const scopes = ['*'];
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO api_principals (id, name, token_digest, scopes_json) VALUES (?, ?, ?, ?)`
+    ).bind(principalId, 'dashboard-generated', await sha256(token), JSON.stringify(scopes)),
+    audit(env, user.email ?? user.access_subject ?? user.id, 'token.create', 'api_principal', principalId, { scopes }),
+  ]);
+  return json({ id: principalId, token, scopes }, 201, { 'cache-control': 'no-store' });
 }
 
 function scopeFor(method: string, path: string): string {
@@ -252,7 +396,7 @@ async function createMessage(request: Request, env: Env, principal: Principal): 
     ).bind(jobId, messageId, input.phone_number_id, input.to, requestJson, timestamp, timestamp),
     audit(env, principal.name, 'message.create', 'message', messageId, { phone_number_id: input.phone_number_id, type: input.type }),
   ]);
-  await env.OUTBOUND_QUEUE.send({ type: 'outbound_dispatch', jobId, phoneNumberId: input.phone_number_id });
+  await env.JOBS_QUEUE.send({ type: 'outbound_dispatch', jobId, phoneNumberId: input.phone_number_id });
   return json({ id: messageId, status: 'queued' }, 202);
 }
 
@@ -323,7 +467,7 @@ async function listTemplates(env: Env): Promise<Response> {
 async function queueTemplateSync(env: Env, principal: Principal): Promise<Response> {
   const configured = await env.DB.prepare(`SELECT 1 FROM whatsapp_connections WHERE status IN ('validated', 'connected') LIMIT 1`).first().catch(() => null);
   if (!env.WABA_ID && !configured) return error(409, 'not_configured', 'No WhatsApp connection is configured');
-  await env.MAINTENANCE_QUEUE.send({ type: 'template_sync' });
+  await env.JOBS_QUEUE.send({ type: 'template_sync' });
   await audit(env, principal.name, 'template.sync.requested', 'template', null, {});
   return json({ status: 'queued' }, 202);
 }
@@ -372,10 +516,14 @@ async function deleteInstallationData(request: Request, env: Env, principal: Pri
     env.DB.prepare(`DELETE FROM audit_events`),
     env.DB.prepare(`DELETE FROM api_principals`),
     env.DB.prepare(`DELETE FROM whatsapp_connections`),
+    env.DB.prepare(`DELETE FROM webhook_endpoint_verification`),
+    env.DB.prepare(`DELETE FROM dashboard_login_attempts`),
+    env.DB.prepare(`DELETE FROM dashboard_sessions`),
+    env.DB.prepare(`DELETE FROM local_owner`),
     env.DB.prepare(`DELETE FROM dashboard_users`),
     env.DB.prepare(`DELETE FROM dashboard_installation`),
   ]);
-  // The bootstrap secret remains in the Worker and is required to re-administer a wiped installation.
+  // A wiped installation returns to first-run state so a new local owner can be created.
   await audit(env, principal.name, 'installation.data_deleted', 'installation', 'default', {});
   return json({ status: 'deleted', deleted_at: now() });
 }

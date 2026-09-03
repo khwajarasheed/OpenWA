@@ -17,20 +17,16 @@
   "r2_buckets": [
     {
       "binding": "MEDIA",
-      "bucket_name": "openwa-media-pending"
+      "bucket_name": "openwa-media"
     }
   ],
   "queues": {
     "producers": [
-      { "binding": "INBOUND_QUEUE", "queue": "openwa-inbound" },
-      { "binding": "OUTBOUND_QUEUE", "queue": "openwa-outbound" },
-      { "binding": "MAINTENANCE_QUEUE", "queue": "openwa-maintenance" },
+      { "binding": "JOBS_QUEUE", "queue": "openwa-jobs" },
       { "binding": "DEAD_LETTER_QUEUE", "queue": "openwa-dlq" }
     ],
     "consumers": [
-      { "queue": "openwa-inbound", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" },
-      { "queue": "openwa-outbound", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" },
-      { "queue": "openwa-maintenance", "max_batch_size": 5, "max_retries": 5, "dead_letter_queue": "openwa-dlq" }
+      { "queue": "openwa-jobs", "max_batch_size": 10, "max_retries": 10, "dead_letter_queue": "openwa-dlq" }
     ]
   },
   "durable_objects": {

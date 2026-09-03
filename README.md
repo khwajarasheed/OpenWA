@@ -2,7 +2,7 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/khwajarasheed/OpenWA)
 
-> Pre-release software. Do not use it for production customer data until Cloudflare/Meta integration and Cloudflare Access provisioning have been validated in a dedicated test account.
+> Pre-release software. Do not use it for production customer data until the Deploy Button, local owner authentication, and Meta integration have been validated end to end in a dedicated test account.
 
 OpenWA CORE is a self-deployable WhatsApp Business API for a customer-owned Cloudflare account. It connects directly to the customer’s Meta Cloud API credentials; it does not broker messages or add a charge to Meta message costs.
 
@@ -15,24 +15,30 @@ The OpenWA project landing page lives in [`landing/`](./landing). It is a separa
 ## Data flow
 
 ```text
-Meta webhook -> signed Worker endpoint -> Queue -> D1
-CORE API -> D1 outbox -> Queue -> phone Durable Object -> Meta API
-Meta status webhook -> Queue -> D1 status-event history
+Meta webhook -> signed Worker endpoint -> jobs Queue -> D1
+CORE API -> D1 outbox -> jobs Queue -> phone Durable Object -> Meta API
+Meta status webhook -> jobs Queue -> D1 status-event history
 ```
 
 CORE intentionally uses at-least-once processing. Incoming webhook deliveries are deduplicated. Outbound sends are not claimed to be exactly once: a network failure after Meta receives a request is stored as `send_unknown` rather than blindly retransmitted.
 
 ## One-click customer deployment
 
-Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download or terminal is needed.
+Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download, terminal, OpenWA secret, WABA ID, or phone-number ID is needed during deployment.
 
-The deployment screen has no OpenWA variables for the customer to fill. Accept the automatically created D1 database, R2 bucket, three work queues, and dead-letter queue. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1. WABA and phone-number IDs are entered later in the dashboard and stored in D1 as connection data.
+The deployment screen has no OpenWA variables for the customer to fill. Keep the automatically selected D1 database, R2 bucket, jobs queue, and dead-letter queue, leave **Protect with Cloudflare Access** off, then click deploy. Protecting the whole Worker would also block Meta's public webhook; path-specific Access can be added later. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1.
 
-After deployment, the customer opens the Worker URL. The first authenticated Cloudflare Access identity claims the `super_admin` role. The dashboard then guides the customer through entering and validating their Meta WABA, phone-number ID, access token, and app secret. Those Meta credentials are encrypted locally before D1 storage and are not sent to OpenWA-operated infrastructure.
+After deployment, click the deployed Worker URL, create the installation’s local owner account, and continue directly into the dashboard. This is the only OpenWA setup required before connecting WhatsApp. Password verification and sessions remain inside the customer’s Worker and D1 database. Meta credentials are encrypted locally before D1 storage and are not sent to OpenWA-operated infrastructure.
 
-The dashboard displays the callback URL and verification token for Meta. The customer completes the remaining Meta-owned action: register the callback, enter the verification token, and subscribe the app to the WABA. If the saved connection is already valid, the setup checklist is replaced with a Connected view.
+Create the owner immediately after a new deployment and do not share the uninitialized Worker URL. The first person to complete this one-time screen becomes the installation owner. Password recovery is not yet implemented in this pre-release version.
 
-> Current limitation: Cloudflare Access setup for the dashboard is still being validated. Do not use the dashboard with production data until that setup has been proven in a fresh Cloudflare account.
+The dashboard first displays the callback URL and generated verification token. Register them in Meta, select the `messages` webhook field, and OpenWA detects verification automatically. Then enter the WABA ID, permanent system-user token, and Meta app secret. The single connection action asks Meta for the WABA's phone numbers; the common one-number case is validated and subscribed automatically. Only customers with multiple numbers are asked to choose one. Onboarding is then replaced with the Connected view; a **Manage connection** action remains available for later credential rotation.
+
+Cloudflare Access can be added later as an optional outer security layer. It is not required for first-run onboarding.
+
+## Updates
+
+The Deploy Button creates a customer-owned copy of this repository and Cloudflare deploys new commits pushed to that copy. Upstream OpenWA releases do not automatically modify customer repositories. Automatic unattended upgrades would risk deploying breaking code or migrations into customer-owned infrastructure, so a signed, reviewable update flow is still required before updates can become a safe one-click dashboard action.
 
 ## Advanced operator deployment
 
@@ -59,7 +65,7 @@ The Worker needs remote Cloudflare bindings for integration tests. Local tests s
 
 ## API
 
-All `/v1` endpoints require `Authorization: Bearer <token>`. Initially use `BOOTSTRAP_ADMIN_TOKEN`, then mint scoped tokens via `POST /v1/admin/tokens`.
+Non-dashboard `/v1` endpoints require `Authorization: Bearer <token>`. After signing in as the local owner, create the installation's first full-access API token from the dashboard. `BOOTSTRAP_ADMIN_TOKEN` remains an optional legacy/operator path; a one-click installation does not require it.
 
 | Endpoint | Scope | Purpose |
 |---|---|---|
@@ -74,8 +80,14 @@ All `/v1` endpoints require `Authorization: Bearer <token>`. Initially use `BOOT
 | `POST /v1/admin/tokens` | `admin` | Mint a scoped token |
 | `GET /v1/admin/export` | `admin` | Download a bounded local JSON export |
 | `DELETE /v1/admin/data` | `admin` | Delete D1/R2 customer data; requires an explicit confirmation header |
-| `GET /v1/dashboard/state` | Cloudflare Access | Read dashboard installation and connection state |
-| `PUT /v1/dashboard/connection` | Cloudflare Access admin | Validate Meta credentials and store encrypted local connection settings |
+| `GET /v1/dashboard/bootstrap` | none | Check whether the local owner has been created |
+| `GET /v1/dashboard/login-parameters` | none | Return the non-secret salt/work factor used for browser-side password derivation |
+| `POST /v1/dashboard/setup`, `POST /v1/dashboard/login` | local auth | Create the first owner or sign in |
+| `POST /v1/dashboard/logout` | owner session | Revoke the current local session |
+| `GET /v1/dashboard/state` | owner session | Read dashboard installation and connection state |
+| `POST /v1/dashboard/phone-numbers` | owner session | Discover selectable phone numbers directly from Meta |
+| `PUT /v1/dashboard/connection` | owner session | Validate Meta credentials and store encrypted local connection settings |
+| `POST /v1/dashboard/api-tokens` | owner session | Create and return a full-access API token once |
 
 Example text send:
 
@@ -95,6 +107,8 @@ curl -X POST "https://<core-host>/v1/messages" \
 ## Operational notes
 
 - Workers Queues and D1 have hard free-tier quota failures. Monitor usage and use a paid plan for production.
+- Owner setup/login performs PBKDF2-SHA-256 in the browser, so the password is never sent to the Worker and the expensive derivation does not consume Worker CPU. D1 stores only a SHA-256 digest of the derived verifier plus its non-secret salt and work factor. Browser compatibility and end-to-end authentication still require validation before production use.
+- The initial release shares one jobs queue for inbound, outbound, and maintenance work to keep one-click deployment small. Split workloads into separate queues before operating at a volume where one workload could starve another.
 - D1 is the system of record and has a 10 GB per-database paid-tier limit. The current default is indefinite content retention, so capacity controls, export, and archival are required before large-scale operation.
 - The current rate defaults are conservative: 60 ms between sends per phone number and one second per recipient. They are intentionally not a substitute for reading current Meta rate-limit behavior.
 - Message content remains in the customer Cloudflare account. It still travels through Meta and Cloudflare; do not claim absolute data locality without separately configuring and validating Cloudflare data-localization controls.
@@ -105,7 +119,7 @@ curl -X POST "https://<core-host>/v1/messages" \
 - R2 media ingestion and upload API.
 - Outbox sweep deduplication and exponential schedule persistence.
 - Template pagination and mutation endpoints.
-- Event subscriptions, export/delete jobs, quota telemetry, API-key management UI, and full team-user management.
+- Event subscriptions, export/delete jobs, quota telemetry, API-token listing/revocation, and full team-user management.
 - Full automated Worker integration test suite against a Cloudflare test account.
 - Meta end-to-end webhook and outbound delivery validation.
 

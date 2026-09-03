@@ -1,4 +1,5 @@
 import type { Env } from './types';
+import { ownedArrayBuffer } from './util';
 
 export interface AccessIdentity {
   subject: string;
@@ -28,12 +29,12 @@ export const accessIdentity = async (request: Request, env: Env): Promise<Access
   if (!audience.includes(env.CF_ACCESS_AUD) || payload.iss !== issuer) return null;
   try {
     const response = await fetch(`${issuer}/cdn-cgi/access/certs`);
-    const keys = await response.json<{ keys?: JsonWebKey[] }>();
+    const keys = await response.json<{ keys?: Array<JsonWebKey & { kid?: string }> }>();
     const jwk = keys.keys?.find((key) => key.kid === header.kid);
     if (!jwk) return null;
     const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
     const signature = decode(parts[2]);
-    const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, ownedArrayBuffer(signature), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
     return valid ? { subject: payload.sub, email: payload.email ?? null } : null;
   } catch { return null; }
 };

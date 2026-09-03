@@ -23,11 +23,11 @@ Cloudflare figures in this document are a snapshot as of 2 September 2026 and mu
 **Recommended.**
 
 ```text
-Meta ──webhook──> Worker ──> Inbound Queue ──> D1/R2
+Meta ──webhook──> Worker ──> shared jobs Queue ──> D1/R2
                          200 immediately
 
-Client ──send API──> Worker ──> D1 outbox ──> Outbound Queue
-                                                │
+Client ──send API──> Worker ──> D1 outbox ──> shared jobs Queue
+                                                   │
                                       Phone-number DO
                                       rate/order control
                                                 │
@@ -41,7 +41,7 @@ Client ──send API──> Worker ──> D1 outbox ──> Outbound Queue
 |---|---|
 | Worker | Webhook verification, API, authorization, validation, Meta adapter, queue consumer, health endpoints, repair jobs |
 | D1 | Contacts, conversations, messages, status history, templates, API principals, idempotency records, outbox, delivery attempts, audit records |
-| Queues | Validated inbound events, outbound dispatch, media retrieval, template-sync jobs, retry/DLQ handling |
+| Queues | A shared v1 jobs queue for validated inbound events, outbound dispatch, media retrieval, and template sync; a separate DLQ for exhausted retries. Split workloads at higher volume. |
 | Durable Objects | One object per phone number for token-bucket control, backoff, recipient pacing, and dispatch serialization |
 | R2 | Media, exports, and optionally short-lived raw webhook archives |
 | KV | Optional capability/public-key/config cache; never correctness-critical state |
@@ -70,6 +70,7 @@ Stream media between Meta and R2 instead of buffering it in Worker memory. Use o
 - D1 and Queues have no shared transaction, requiring the repairable outbox.
 - One D1 database is a write and size boundary.
 - One phone-number Durable Object is a coordination point; validate burst headroom before promising high-throughput operation.
+- Local owner PBKDF2 runs in the first-party browser and the Worker stores/compares only a digest of the derived verifier. This avoids spending the Workers Free CPU allowance on password stretching, while preserving an offline work factor if D1 is copied. Treat the verifier as password-equivalent authentication material and validate the complete browser/TLS/session flow before production release.
 
 ### Option B — Minimal Worker, D1, R2, and Cron
 
@@ -174,14 +175,14 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 
 ### Meaning of “one-click deploy”
 
-Literal one-click deployment is not achievable: customers must supply Meta assets/credentials, authorize Cloudflare, and register the callback URL with Meta. The honest promise is a guided deployment to the customer’s own account in a few steps.
+One-click infrastructure deployment is achievable, but complete WhatsApp activation is not: customers must still authorize Cloudflare, supply their own Meta assets/credentials after deployment, and register the callback URL with Meta. The honest promise is one-click infrastructure followed by guided in-dashboard Meta onboarding.
 
 Cloudflare’s Deploy Button can clone a public GitHub/GitLab repository, configure a Worker, provision declared bindings, build, deploy, and run D1 migrations. Keep the distributable as one isolated Worker project because Deploy Button support for monorepos and multiple Worker apps is limited.
 
 ### Deployment paths
 
-1. **Deploy Button:** default community path; the customer authenticates directly with Cloudflare, resources are provisioned in their account, and secrets are entered through Cloudflare.
-2. **Wrangler installer:** operator path using Cloudflare OAuth where possible; creates resources, applies migrations, stores secrets, deploys, health-checks, and prints Meta webhook setup steps.
+1. **Deploy Button:** default community path; the customer authenticates directly with Cloudflare, keeps the preselected resources, and deploys without entering OpenWA or Meta variables.
+2. **Wrangler installer:** advanced operator path using Cloudflare OAuth where possible; creates resources, applies migrations, deploys, and directs the operator to the same first-run dashboard.
 3. **Terraform plus Wrangler:** enterprise path; Terraform owns durable resource configuration, Wrangler deploys Worker/migrations. Secrets must come from customer CI secrets or interactive input, never Terraform state.
 
 ### Least-privilege Cloudflare access
@@ -190,26 +191,11 @@ If OAuth cannot be used, request only scoped account permissions for Workers Scr
 
 ### Customer secrets
 
-Worker secrets:
+The default deployment has no customer-entered Worker secret. On first use, an installation-scoped Durable Object generates the credential-encryption key and webhook verification token inside the customer’s account. The encryption key is never returned to the browser. After local owner creation, the owner enters the WABA ID, system-user token, and app secret in the self-hosted dashboard. CORE discovers phone numbers from Meta, lets the owner select one, subscribes the app to the WABA, and encrypts the access token and app secret before D1 persistence.
 
-- Meta system-user access token
-- Meta app secret
-- Webhook verification token
-- One-time installation bootstrap token
-- Installation-local encryption key for future dynamic integration credentials
+Optional legacy/operator variables may provide Meta credentials, a webhook token, a bootstrap API token, or a pinned Graph version, but they are not part of the Deploy Button path. Credentials never traverse vendor infrastructure, Git, plaintext configuration, logs, or diagnostics.
 
-Non-secret configuration:
-
-- WABA ID
-- phone-number IDs
-- Graph API version
-- retention policy
-- instance ID
-- data-location selection
-
-Credentials are entered directly into the customer’s Cloudflare account; they never traverse vendor infrastructure, Git, plaintext configuration, logs, or diagnostics.
-
-One installation supports one WABA with multiple phone numbers. Many-WABA agency tenancy is out of scope for v1.
+One installation supports one WABA with multiple phone numbers. The v1 connection uses the Meta app-level callback verified during onboarding plus a plain WABA subscription; per-WABA callback overrides and many-WABA agency tenancy are out of scope.
 
 ### Data location
 
@@ -475,7 +461,7 @@ Measure full lifecycle cost, p50/p95/p99 latency, queue backlog age, D1 rows rea
 
 - **High:** Worker + Queue + D1 + R2 is appropriate for the SMB target; KV is not suitable for correctness-critical state.
 - **Medium:** per-phone Durable Object dispatch control; requires measured burst/cost validation.
-- **Medium:** Deploy Button is viable but needs a full resource/secret/migration spike.
+- **Medium:** Deploy Button provisioning is viable but the reduced jobs-queue/DLQ resource mapping, all migrations, and first-owner flow still need a fresh-account spike.
 - **Medium:** D1 can meet baseline needs with proper indexes; write amplification and indefinite retention are unmeasured.
 - **Low without legal review:** AGPL/proprietary extension separation and contribution terms.
 - **Low without organizational facts:** formal privacy/security/regulatory claims.

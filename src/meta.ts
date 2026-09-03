@@ -14,3 +14,11 @@ export const verifyMetaSignature = async (payload: string, signature: string | n
 };
 
 export const graphUrl = (env: Env, path: string): string => `https://graph.facebook.com/${env.META_GRAPH_VERSION ?? 'v24.0'}/${path}`;
+
+export const appSecretProof = async (accessToken: string, appSecret: string): Promise<string> => {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(appSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const signed = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(accessToken));
+  return [...new Uint8Array(signed)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};

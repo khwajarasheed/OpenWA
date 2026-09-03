@@ -9,6 +9,7 @@
     "landing:dev": "wrangler pages dev landing --config landing/wrangler.jsonc",
     "landing:deploy": "wrangler pages deploy landing --project-name openwa-landing --config landing/wrangler.jsonc",
     "setup": "node scripts/setup.mjs",
+    "predeploy": "npm run check && npm test",
     "deploy": "node scripts/deploy.mjs",
     "check": "tsc --noEmit",
     "test": "vitest run",
@@ -24,5 +25,21 @@
     "esbuild@0.28.2": true,
     "esbuild@0.28.1": true,
     "workerd@1.20260831.1": true
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "OpenWA data storage. Keep Create new selected; Cloudflare provisions it automatically."
+      },
+      "MEDIA": {
+        "description": "Customer-owned media storage. Keep Create new selected."
+      },
+      "JOBS_QUEUE": {
+        "description": "OpenWA background jobs. Keep Create new selected."
+      },
+      "DEAD_LETTER_QUEUE": {
+        "description": "Failed-job safety queue. Keep Create new selected."
+      }
+    }
   }
 }
