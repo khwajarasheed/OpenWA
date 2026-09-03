@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -239,41 +239,31 @@ function curlConfigValue(value) {
 }
 
 function runCurl(path, { headers, jurisdiction, method }) {
-  return new Promise((resolveCurl, rejectCurl) => {
-    const requestHeaders = {
-      ...headers,
-      ...(jurisdiction ? { 'cf-r2-jurisdiction': jurisdiction } : {}),
-    };
-    const curl = spawn('curl', [
-      '--silent',
-      '--show-error',
-      '--request', method,
-      '--config', '-',
-      '--write-out', '\n%{http_code}',
-      `${apiBase}${path}`,
-    ]);
-    const stdout = [];
-    const stderr = [];
-    curl.stdout.on('data', (chunk) => stdout.push(chunk));
-    curl.stderr.on('data', (chunk) => stderr.push(chunk));
-    curl.on('error', (error) => rejectCurl(error));
-    curl.on('close', (status) => {
-      const output = Buffer.concat(stdout).toString();
-      const splitAt = output.lastIndexOf('\n');
-      const httpStatus = Number(output.slice(splitAt + 1));
-      const body = splitAt >= 0 ? output.slice(0, splitAt) : '';
-      if (status !== 0 || !Number.isInteger(httpStatus)) {
-        const details = Buffer.concat(stderr).toString().trim();
-        rejectCurl(new Error(details || 'curl could not reach the Cloudflare API.'));
-        return;
-      }
-      resolveCurl({ body, status: httpStatus });
-    });
-    for (const [name, value] of Object.entries(requestHeaders)) {
-      curl.stdin.write(`header = ${curlConfigValue(`${name}: ${value}`)}\n`);
-    }
-    curl.stdin.end();
-  });
+  const requestHeaders = {
+    ...headers,
+    ...(jurisdiction ? { 'cf-r2-jurisdiction': jurisdiction } : {}),
+  };
+  const config = Object.entries(requestHeaders)
+    .map(([name, value]) => `header = ${curlConfigValue(`${name}: ${value}`)}`)
+    .join('\n');
+  const result = spawnSync('curl', [
+    '--silent',
+    '--show-error',
+    '--connect-timeout', '10',
+    '--max-time', '20',
+    '--request', method,
+    '--config', '-',
+    '--write-out', '\n%{http_code}',
+    `${apiBase}${path}`,
+  ], { input: config, encoding: 'utf8' });
+  const output = result.stdout ?? '';
+  const splitAt = output.lastIndexOf('\n');
+  const httpStatus = Number(output.slice(splitAt + 1));
+  const body = splitAt >= 0 ? output.slice(0, splitAt) : '';
+  if (result.error || result.status !== 0 || !Number.isInteger(httpStatus)) {
+    throw result.error ?? new Error(result.stderr?.trim() || 'curl could not reach the Cloudflare API.');
+  }
+  return Promise.resolve({ body, status: httpStatus });
 }
 
 async function cloudflareRequest(path, { headers, jurisdiction, method = 'GET' }) {
