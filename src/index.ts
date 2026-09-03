@@ -170,6 +170,8 @@ async function handleDashboardApi(request: Request, env: Env, url: URL): Promise
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/state') return dashboardState(user, env);
   if (request.method === 'POST' && url.pathname === '/v1/dashboard/phone-numbers') return discoverPhoneNumbers(request, user, env);
   if (request.method === 'PUT' && url.pathname === '/v1/dashboard/connection') return saveConnection(request, user, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/demo/simulate') return simulateDemoAction(request, user, env);
+  if (request.method === 'POST' && url.pathname === '/v1/dashboard/demo/clear') return clearDemoWorkspace(request, user, env);
   if (request.method === 'POST' && url.pathname === '/v1/dashboard/api-tokens') return createDashboardApiToken(user, env);
   return error(404, 'not_found', 'Route not found');
 }
@@ -201,6 +203,7 @@ async function setupLocalOwner(request: Request, env: Env): Promise<Response> {
   if (validation) return error(422, 'validation_error', validation);
   const created = await createLocalOwner(input.email!, input.password_verifier!, input.password_salt!, input.password_iterations!, env);
   if (!created) return error(409, 'already_initialized', 'The owner account has already been created');
+  await ensureDemoWorkspace(env);
   return json({ user: created.user }, 201, { 'set-cookie': created.cookie, 'cache-control': 'no-store' });
 }
 
@@ -241,19 +244,34 @@ async function dashboardUser(subject: string, email: string | null, env: Env): P
 }
 
 async function dashboardState(user: DashboardUser, env: Env): Promise<Response> {
-  const [connection, webhookEndpoint] = await Promise.all([
+  // Recover an installation where owner creation succeeded just before a demo
+  // bootstrap failure (for example, when a local D1 migration was not yet run).
+  await ensureDemoWorkspaceIfEmpty(env);
+  const [connection, webhookEndpoint, workspace, counts] = await Promise.all([
     env.DB.prepare(
       `SELECT id, waba_id, phone_number_id, display_phone_number, status, last_validated_at, webhook_verified_at, last_error, updated_at
        FROM whatsapp_connections ORDER BY updated_at DESC LIMIT 1`
     ).first(),
     env.DB.prepare(`SELECT verified_at FROM webhook_endpoint_verification WHERE id = 'default'`).first<{ verified_at: string }>(),
+    env.DB.prepare(`SELECT mode, cleanup_prompted_at FROM demo_workspace WHERE id = 'default'`).first<{ mode: 'demo' | 'live'; cleanup_prompted_at: string | null }>(),
+    env.DB.prepare(`SELECT (SELECT COUNT(*) FROM contacts) contacts, (SELECT COUNT(*) FROM conversations) conversations, (SELECT COUNT(*) FROM messages) messages, (SELECT COUNT(*) FROM templates) templates`).first(),
   ]);
   return json({
     user: { id: user.id, email: user.email, role: user.role },
     connection: connection ?? null,
     webhook_endpoint_verified_at: webhookEndpoint?.verified_at ?? null,
     webhook_verify_token: user.role === 'super_admin' ? await webhookVerifyToken(env) : undefined,
+    workspace: { mode: workspace?.mode ?? 'live', cleanup_prompt: Boolean(connection?.status === 'connected' && workspace?.mode === 'demo'), counts },
   });
+}
+
+async function ensureDemoWorkspaceIfEmpty(env: Env): Promise<void> {
+  const [workspace, connection, existingData] = await Promise.all([
+    env.DB.prepare(`SELECT id FROM demo_workspace WHERE id = 'default'`).first(),
+    env.DB.prepare(`SELECT 1 FROM whatsapp_connections LIMIT 1`).first(),
+    env.DB.prepare(`SELECT (SELECT COUNT(*) FROM contacts) + (SELECT COUNT(*) FROM conversations) + (SELECT COUNT(*) FROM messages) + (SELECT COUNT(*) FROM templates) AS count`).first<{ count: number }>(),
+  ]);
+  if (!workspace && !connection && (existingData?.count ?? 0) === 0) await ensureDemoWorkspace(env);
 }
 
 async function webhookVerifyToken(env: Env): Promise<string> {
@@ -312,6 +330,66 @@ async function saveConnection(request: Request, user: DashboardUser, env: Env): 
     `SELECT status, phone_number_id, display_phone_number FROM whatsapp_connections WHERE phone_number_id = ?`
   ).bind(input.phone_number_id).first<{ status: string; phone_number_id: string; display_phone_number: string | null }>();
   return json(saved ?? { status: connectionStatus, phone_number_id: input.phone_number_id, display_phone_number: displayPhoneNumber });
+}
+
+async function ensureDemoWorkspace(env: Env): Promise<void> {
+  const existing = await env.DB.prepare(`SELECT id FROM demo_workspace WHERE id = 'default'`).first();
+  if (existing) return;
+  const batch = 'initial-demo';
+  const timestamp = now();
+  const contacts = [
+    ['demo-contact-1', '971501234567', 'Aisha Rahman'], ['demo-contact-2', '971509876543', 'Noah Martin'], ['demo-contact-3', '971551112233', 'Maya Patel'],
+  ];
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(`INSERT INTO demo_workspace (id, mode, created_at, updated_at) VALUES ('default', 'demo', ?, ?)`).bind(timestamp, timestamp),
+  ];
+  for (const [contactId, waId, name] of contacts) {
+    const conversationId = `${contactId}-conversation`;
+    statements.push(
+      env.DB.prepare(`INSERT INTO contacts (id, wa_id, display_name, profile_json, created_at, updated_at) VALUES (?, ?, ?, '{}', ?, ?)`).bind(contactId, waId, name, timestamp, timestamp),
+      env.DB.prepare(`INSERT INTO conversations (id, contact_id, phone_number_id, last_message_at, created_at, updated_at) VALUES (?, ?, 'demo-phone', ?, ?, ?)`).bind(conversationId, contactId, timestamp, timestamp, timestamp),
+      env.DB.prepare(`INSERT INTO demo_seed_records (batch_id, record_type, record_id) VALUES (?, 'contact', ?), (?, 'conversation', ?)`).bind(batch, contactId, batch, conversationId),
+    );
+  }
+  const messages = [
+    ['demo-message-1', 'demo-contact-1-conversation', 'inbound', 'text', 'read', 'Welcome! Can you share pricing?'],
+    ['demo-message-2', 'demo-contact-1-conversation', 'outbound', 'template', 'delivered', 'Thanks Aisha — a specialist will follow up shortly.'],
+    ['demo-message-3', 'demo-contact-2-conversation', 'outbound', 'text', 'sent', 'Your appointment is confirmed for tomorrow.'],
+    ['demo-message-4', 'demo-contact-3-conversation', 'inbound', 'text', 'read', 'I need help with my order.'],
+  ];
+  for (const [messageId, conversationId, direction, type, status, body] of messages) statements.push(
+    env.DB.prepare(`INSERT INTO messages (id, conversation_id, phone_number_id, direction, type, body_json, status, created_at, updated_at) VALUES (?, ?, 'demo-phone', ?, ?, ?, ?, ?, ?)`).bind(messageId, conversationId, direction, type, JSON.stringify({ body }), status, timestamp, timestamp),
+    env.DB.prepare(`INSERT INTO demo_seed_records (batch_id, record_type, record_id) VALUES (?, 'message', ?)`).bind(batch, messageId),
+  );
+  for (const [templateId, name, category] of [['demo-template-1', 'welcome_message', 'MARKETING'], ['demo-template-2', 'appointment_reminder', 'UTILITY']]) statements.push(
+    env.DB.prepare(`INSERT INTO templates (id, meta_template_id, name, language, category, status, quality_score, components_json, updated_at) VALUES (?, ?, ?, 'en_US', ?, 'APPROVED', 'GREEN', '[]', ?)`).bind(templateId, templateId, name, category, timestamp),
+    env.DB.prepare(`INSERT INTO demo_seed_records (batch_id, record_type, record_id) VALUES (?, 'template', ?)`).bind(batch, templateId),
+  );
+  await env.DB.batch(statements);
+}
+
+async function simulateDemoAction(request: Request, user: DashboardUser, env: Env): Promise<Response> {
+  const workspace = await env.DB.prepare(`SELECT mode FROM demo_workspace WHERE id = 'default'`).first<{ mode: string }>();
+  if (workspace?.mode !== 'demo') return error(409, 'live_workspace', 'Simulated actions are available only in the demo workspace');
+  let input: { action?: string }; try { input = await request.json(); } catch { return error(400, 'invalid_json', 'Request body must be JSON'); }
+  if (!['send_message', 'sync_templates', 'create_token'].includes(input.action ?? '')) return error(422, 'validation_error', 'Unsupported demo action');
+  await audit(env, user.email ?? user.id, `demo.${input.action}`, 'demo_workspace', 'default', { simulated: true });
+  return json({ status: 'simulated', message: 'This is a safe demo result. No Meta request or persisted demo record was changed.' });
+}
+
+async function clearDemoWorkspace(request: Request, user: DashboardUser, env: Env): Promise<Response> {
+  if (request.headers.get('x-confirm-demo-cleanup') !== 'START_FRESH') return error(428, 'confirmation_required', 'Set X-Confirm-Demo-Cleanup: START_FRESH to remove supplied demo data');
+  const workspace = await env.DB.prepare(`SELECT mode FROM demo_workspace WHERE id = 'default'`).first<{ mode: string }>();
+  if (workspace?.mode !== 'demo') return error(409, 'already_live', 'The workspace is already clean');
+  const hasConnection = await env.DB.prepare(`SELECT 1 FROM whatsapp_connections WHERE status = 'connected' LIMIT 1`).first();
+  if (!hasConnection) return error(409, 'connection_required', 'Connect WhatsApp before starting fresh');
+  const ids = async (type: string) => (await env.DB.prepare(`SELECT record_id FROM demo_seed_records WHERE batch_id = 'initial-demo' AND record_type = ?`).bind(type).all<{ record_id: string }>()).results.map((row) => row.record_id);
+  const messageIds = await ids('message'); const conversationIds = await ids('conversation'); const contactIds = await ids('contact'); const templateIds = await ids('template');
+  const remove = (table: string, values: string[]) => values.length ? env.DB.prepare(`DELETE FROM ${table} WHERE id IN (${values.map(() => '?').join(',')})`).bind(...values) : null;
+  await env.DB.batch([remove('messages', messageIds), remove('conversations', conversationIds), remove('contacts', contactIds), remove('templates', templateIds)].filter(Boolean) as D1PreparedStatement[]);
+  await env.DB.batch([env.DB.prepare(`DELETE FROM demo_seed_records WHERE batch_id = 'initial-demo'`), env.DB.prepare(`UPDATE demo_workspace SET mode = 'live', cleanup_prompted_at = ?, updated_at = ? WHERE id = 'default'`).bind(now(), now())]);
+  await audit(env, user.email ?? user.id, 'demo.cleared', 'demo_workspace', 'default', {});
+  return json({ status: 'live' });
 }
 
 async function discoverPhoneNumbers(request: Request, user: DashboardUser, env: Env): Promise<Response> {

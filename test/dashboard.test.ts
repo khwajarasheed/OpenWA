@@ -2,27 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { dashboardHtml } from '../src/dashboard';
 
 describe('self-hosted onboarding dashboard', () => {
-  it('guides webhook verification before the automated Meta connection', () => {
+  it('opens the complete sample workspace without gating navigation on Meta onboarding', () => {
     const html = dashboardHtml();
-    expect(html.indexOf('Verify the Meta webhook')).toBeLessThan(html.indexOf('Find and connect the number'));
-    expect(html).toContain('Find and connect my number');
-    expect(html).toContain('if(result.phone_numbers.length===1)');
-    expect(html).not.toContain('id="find-numbers"');
-    expect(html).not.toContain('id="save-connection"');
-    expect(html).toContain('Manage connection');
-    expect(html).toContain('password_verifier:verifier');
-    expect(html).toContain('const passwordIterations=600000');
-    expect(html).not.toContain('Cloudflare Access required');
-    expect(html).toContain("const form=event.currentTarget;const data=Object.fromEntries(new FormData(form))");
-    expect(html).not.toContain('event.currentTarget.reset()');
-    const login = html.slice(html.indexOf('<section id="login"'), html.indexOf('<section id="app"'));
-    expect(login).not.toContain('name="email"');
+    expect(html).toContain('Sample workspace');
+    expect(html).toContain('Connect WhatsApp');
+    expect(html).toContain("'Inbox'");
+    expect(html).toContain("'Contacts'");
+    expect(html).toContain("'Templates'");
+    expect(html).toContain("'/v1/dashboard/demo/simulate'");
+    expect(html).toContain("'/v1/dashboard/demo/clear'");
+    expect(html).toContain('password_verifier:await derive');
+    expect(html).toContain('password_iterations:600000');
+    expect(html).toContain('Start with empty workspace');
   });
 
-  it('renders syntactically valid client JavaScript with numeric ID validation intact', () => {
+  it('renders syntactically valid client JavaScript', () => {
     const html = dashboardHtml();
     const script = html.slice(html.indexOf('<script>') + '<script>'.length, html.indexOf('</script>'));
     expect(() => new Function(script)).not.toThrow();
-    expect(script.match(/\\d\{3,30\}/g)).toHaveLength(1);
+    expect(script).toContain('password_iterations:600000');
   });
 });
