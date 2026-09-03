@@ -11,6 +11,11 @@ describe('self-hosted onboarding dashboard', () => {
     expect(html).toContain("'Templates'");
     expect(html).toContain("'/v1/dashboard/demo/simulate'");
     expect(html).toContain("'/v1/dashboard/demo/clear'");
+    expect(html).toContain("'/v1/dashboard/messages'");
+    expect(html).toContain("'/v1/dashboard/conversations'");
+    expect(html).toContain("'/v1/dashboard/contacts'");
+    expect(html).toContain("'/v1/dashboard/templates'");
+    expect(html).not.toContain("['/v1/messages'");
     expect(html).toContain('password_verifier:await derive');
     expect(html).toContain('password_iterations:600000');
     expect(html).toContain('Start with empty workspace');

@@ -26,6 +26,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/webhooks/meta') return handleMetaWebhook(request, env);
     if (url.pathname === '/' && request.method === 'GET') return dashboardResponse();
+    if (url.pathname === '/favicon.ico' && request.method === 'GET') return new Response(null, { status: 204 });
     if (url.pathname === '/health') return json({ status: 'ok', service: 'openwa-core' });
     if (url.pathname === '/ready') return ready(env);
     if (url.pathname === '/version') return json({ api: 'v1', core: '0.1.0' });
@@ -149,7 +150,12 @@ async function handleDashboardApi(request: Request, env: Env, url: URL): Promise
     return error(403, 'invalid_request_origin', 'Dashboard changes must come from this OpenWA installation');
   }
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/bootstrap') {
-    return json({ initialized: await installationInitialized(env) }, 200, { 'cache-control': 'no-store' });
+    const localUser = await localSessionUser(request, env);
+    const accessUser = localUser ? null : await accessIdentity(request, env);
+    return json({
+      initialized: await installationInitialized(env),
+      authenticated: Boolean(localUser || accessUser),
+    }, 200, { 'cache-control': 'no-store' });
   }
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/login-parameters') {
     const parameters = await localLoginParameters(env);
@@ -168,6 +174,10 @@ async function handleDashboardApi(request: Request, env: Env, url: URL): Promise
   }
   if (!user) return error(401, 'dashboard_login_required', 'Sign in to access the OpenWA dashboard');
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/state') return dashboardState(user, env);
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/messages') return listMessages(url, env);
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/contacts') return listContacts(url, env);
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/conversations') return listConversations(url, env);
+  if (request.method === 'GET' && url.pathname === '/v1/dashboard/templates') return listTemplates(env);
   if (request.method === 'POST' && url.pathname === '/v1/dashboard/phone-numbers') return discoverPhoneNumbers(request, user, env);
   if (request.method === 'PUT' && url.pathname === '/v1/dashboard/connection') return saveConnection(request, user, env);
   if (request.method === 'POST' && url.pathname === '/v1/dashboard/demo/simulate') return simulateDemoAction(request, user, env);

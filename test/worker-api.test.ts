@@ -62,7 +62,7 @@ describe('CORE message API', () => {
     const env = apiEnv(jobs, calls);
     const bootstrap = await worker.fetch(new Request('https://core.example/v1/dashboard/bootstrap'), env);
     expect(bootstrap.status).toBe(200);
-    await expect(bootstrap.json()).resolves.toEqual({ initialized: false });
+    await expect(bootstrap.json()).resolves.toEqual({ initialized: false, authenticated: false });
 
     const setup = await worker.fetch(new Request('https://core.example/v1/dashboard/setup', {
       method: 'POST', headers: { 'content-type': 'application/json' },
