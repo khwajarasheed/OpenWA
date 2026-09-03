@@ -1,0 +1,106 @@
+name: OpenWA upstream updates
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'auto merges only an explicitly compatible release; review creates a pull request'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - review
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Check OpenWA release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # A customer may override these repository variables once, without changing code.
+      OPENWA_UPSTREAM: ${{ vars.OPENWA_UPSTREAM_REPOSITORY || 'khwajarasheed/OpenWA' }}
+      OPENWA_UPDATE_MODE: ${{ inputs.mode || vars.OPENWA_UPDATE_MODE || 'auto' }}
+    steps:
+      - name: Check out this customer-owned deployment copy
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create a review or automatic update
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$OPENWA_UPDATE_MODE" != "review" && "$OPENWA_UPDATE_MODE" != "auto" ]]; then
+            echo "OPENWA_UPDATE_MODE must be review or auto."
+            exit 1
+          fi
+
+          default_branch="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.default_branch')"
+          latest_tag="$(gh api "repos/${OPENWA_UPSTREAM}/releases/latest" --jq '.tag_name' 2>/dev/null || true)"
+          if [[ -z "$latest_tag" ]]; then
+            echo "No published upstream release is available yet."
+            exit 0
+          fi
+
+          git fetch --no-tags "https://github.com/${OPENWA_UPSTREAM}.git" "refs/tags/${latest_tag}:refs/tags/openwa/${latest_tag}"
+          target_ref="refs/tags/openwa/${latest_tag}"
+          git switch "$default_branch"
+          git pull --ff-only origin "$default_branch"
+
+          if git merge-base --is-ancestor "$target_ref" HEAD; then
+            echo "OpenWA ${latest_tag} is already included in this deployment copy."
+            exit 0
+          fi
+
+          manifest="$(git show "${target_ref}:openwa-release.json" 2>/dev/null || true)"
+          if [[ -z "$manifest" ]]; then
+            echo "Upstream release ${latest_tag} has no OpenWA release manifest; refusing to update."
+            exit 1
+          fi
+
+          compatible_auto_update="$(jq -r '.schema_version == 1 and .compatibility == "patch" and .auto_update == true' <<<"$manifest")"
+          if [[ "$OPENWA_UPDATE_MODE" == "auto" && "$compatible_auto_update" != "true" ]]; then
+            echo "OpenWA ${latest_tag} is not explicitly marked as a compatible automatic update; creating a review PR instead."
+            OPENWA_UPDATE_MODE=review
+          fi
+
+          safe_tag="$(sed 's/[^A-Za-z0-9._-]/-/g' <<<"$latest_tag")"
+          branch="openwa/update-${safe_tag}"
+          if gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq 'length' | grep -qx '1'; then
+            echo "An OpenWA update PR for ${latest_tag} is already open."
+            exit 0
+          fi
+
+          # Cloudflare owns the resource IDs in this copied repository. Preserve
+          # that local binding configuration while updating application source.
+          cp wrangler.jsonc /tmp/customer-wrangler.jsonc
+          git switch -C "$branch" "$default_branch"
+          git config user.name "openwa-update-bot[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git merge --no-ff --no-edit "$target_ref"; then
+            git merge --abort || true
+            echo "::warning::OpenWA ${latest_tag} conflicts with local changes. Resolve it in a review PR."
+            exit 1
+          fi
+          cp /tmp/customer-wrangler.jsonc wrangler.jsonc
+          git add wrangler.jsonc
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: preserve customer Cloudflare bindings"
+          fi
+          git push --force-with-lease origin "${branch}"
+
+          pr_url="$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$default_branch" --head "$branch" --title "Update OpenWA to ${latest_tag}" --body "Automated OpenWA update check.\n\n- Upstream: ${OPENWA_UPSTREAM}\n- Release: ${latest_tag}\n- Mode requested: ${OPENWA_UPDATE_MODE}\n- Customer Cloudflare binding IDs were preserved.\n\nReview the diff before merging. Cloudflare deploys after this PR is merged.")"
+          echo "Created ${pr_url}"
+
+          if [[ "$OPENWA_UPDATE_MODE" == "auto" ]]; then
+            gh pr merge --repo "$GITHUB_REPOSITORY" "$pr_url" --merge --delete-branch
+            echo "Merged compatible automatic update ${latest_tag}. Cloudflare will deploy the updated default branch."
+          fi

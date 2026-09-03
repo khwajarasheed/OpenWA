@@ -38,7 +38,13 @@ Cloudflare Access can be added later as an optional outer security layer. It is 
 
 ## Updates
 
-The Deploy Button creates a customer-owned copy of this repository and Cloudflare deploys new commits pushed to that copy. Upstream OpenWA releases do not automatically modify customer repositories. Automatic unattended upgrades would risk deploying breaking code or migrations into customer-owned infrastructure, so a signed, reviewable update flow is still required before updates can become a safe one-click dashboard action.
+The Deploy Button creates a customer-owned copy of this repository and Cloudflare deploys commits pushed to that copy. The copied repository includes an **OpenWA upstream updates** GitHub Actions workflow, which checks once a day for published OpenWA releases.
+
+The default **automatic** mode creates and merges an auditable pull request for releases whose `openwa-release.json` explicitly declares `compatibility: "patch"` and `auto_update: true`; Cloudflare then deploys the merge automatically. Customers do not need to use GitHub or a terminal for those safe updates. Major versions, migration-bearing releases, binding changes, or unmarked releases always become a review pull request instead. Customers who prefer approvals for every release can set the repository variable `OPENWA_UPDATE_MODE` to `review` once in GitHub.
+
+Customers may set `OPENWA_UPSTREAM_REPOSITORY` once if they use an approved OpenWA fork. The workflow preserves the copied installation's `wrangler.jsonc`, so generated D1/R2/Queue bindings are never replaced by the portable source template. It has no access to WhatsApp content or Cloudflare credentials; GitHub Actions changes only the customer's own GitHub copy. Existing installations need this workflow added to their copied repository once; new Deploy Button installations receive it automatically.
+
+Project maintainers publish versioned GitHub releases deliberately; see [the release policy](./docs/releasing.md). No release is eligible for automatic customer deployment unless the release manifest explicitly marks it as a backward-compatible patch with no migration work.
 
 ## Advanced operator deployment
 

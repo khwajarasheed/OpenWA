@@ -13,6 +13,8 @@ describe('self-hosted onboarding dashboard', () => {
     expect(html).toContain('password_verifier:verifier');
     expect(html).toContain('const passwordIterations=600000');
     expect(html).not.toContain('Cloudflare Access required');
+    expect(html).toContain("const form=event.currentTarget;const data=Object.fromEntries(new FormData(form))");
+    expect(html).not.toContain('event.currentTarget.reset()');
     const login = html.slice(html.indexOf('<section id="login"'), html.indexOf('<section id="app"'));
     expect(login).not.toContain('name="email"');
   });
