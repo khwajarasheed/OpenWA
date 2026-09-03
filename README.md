@@ -51,6 +51,28 @@ npm run setup
 
 Do not put Meta tokens in Git, Terraform state, plaintext variables, or vendor-operated setup services.
 
+## Remove a test installation
+
+The repository includes a guarded cleanup command for repeatable Deploy Button testing. First preview the exact resources read from `wrangler.jsonc`:
+
+```bash
+npm run cleanup
+```
+
+After checking the names, permanently remove them:
+
+```bash
+npm run cleanup -- --yes
+```
+
+The destructive command first asks Cloudflare for queues whose consumer or producer is the configured Worker, then removes only consumer IDs Cloudflare identifies as that Worker. It deletes those discovered Queue bindings together with the queues declared in `wrangler.jsonc`, then deletes the Worker (including its deployed bindings and Worker-owned Durable Objects), every object in the configured R2 bucket and the bucket itself, and the configured D1 database. Cloudflare requires an R2 bucket to be empty before it can be deleted, so the script handles that automatically with the current Wrangler credentials.
+
+Only the Worker named by this deployment's `wrangler.jsonc`, queues Cloudflare directly identifies as bound to that same Worker, and its specific `DB`, `MEDIA`, `JOBS_QUEUE`, and `DEAD_LETTER_QUEUE` bindings are resolved; it does not search for resources by prefix. The script refuses to force-delete a Worker if Cloudflare reports that another project depends on it. The Git repository, the project-owner landing page, domains, and unrelated Cloudflare resources are not touched. The declarations in `wrangler.jsonc` intentionally remain because they are needed by the next deployment.
+
+Deletion is irreversible. If the logged-in Wrangler user can access multiple accounts, add `--account-id <ACCOUNT_ID>`. For a jurisdictional R2 bucket, add `--jurisdiction eu`, `us`, or `fedramp` if it is not already recorded in `wrangler.jsonc`.
+
+The cleanup command resolves the D1 database by its configured name from Cloudflare before deletion. This is intentional: the portable repository keeps a placeholder D1 ID, while each deployed installation has its own real D1 UUID.
+
 ## Local development and validation
 
 ```bash
