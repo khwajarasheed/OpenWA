@@ -73,6 +73,16 @@ Deletion is irreversible. If the logged-in Wrangler user can access multiple acc
 
 The cleanup command resolves the D1 database by its configured name from Cloudflare before deletion. This is intentional: the portable repository keeps a placeholder D1 ID, while each deployed installation has its own real D1 UUID.
 
+### Also delete the Deploy Button GitHub copy
+
+Cloudflare cleanup intentionally does not delete a GitHub repository by default. To delete the private GitHub copy created for one installation, provide its exact name explicitly:
+
+```bash
+npm run cleanup -- --yes --delete-github-repo <owner>/<repository>
+```
+
+This permanently deletes only the named GitHub.com repository after Cloudflare cleanup succeeds; it does not infer a repository from Git remotes and does not delete local files. It requires the [GitHub CLI](https://cli.github.com/) to be installed and authenticated with repository deletion permission. If GitHub reports a missing permission, run `gh auth refresh -s delete_repo` and try again.
+
 ## Local development and validation
 
 ```bash

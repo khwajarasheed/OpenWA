@@ -19,14 +19,23 @@ Options:
   --yes                       Perform the irreversible deletion
   --account-id <32-hex-id>    Select an account when Wrangler has more than one
   --jurisdiction <value>      R2 jurisdiction: default, eu, us, or fedramp
+  --delete-github-repo <owner/repository>
+                              Also permanently delete this exact GitHub.com repository
   --help                      Show this help
 `;
 
 export function parseArguments(args) {
-  const result = { yes: false, help: false, accountId: undefined, jurisdiction: undefined };
+  const result = {
+    yes: false,
+    help: false,
+    accountId: undefined,
+    jurisdiction: undefined,
+    githubRepository: undefined,
+  };
   const valueOptions = new Map([
     ['--account-id', 'accountId'],
     ['--jurisdiction', 'jurisdiction'],
+    ['--delete-github-repo', 'githubRepository'],
   ]);
 
   for (let index = 0; index < args.length; index += 1) {
@@ -48,6 +57,9 @@ export function parseArguments(args) {
   }
   if (result.jurisdiction && !['default', 'eu', 'us', 'fedramp'].includes(result.jurisdiction)) {
     throw new Error('--jurisdiction must be default, eu, us, or fedramp.');
+  }
+  if (result.githubRepository && !/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(result.githubRepository)) {
+    throw new Error('--delete-github-repo must be an exact GitHub owner/repository name.');
   }
   return result;
 }
@@ -133,6 +145,32 @@ function runWrangler(argumentsList, { accountId, quiet = false, allowMissing = f
         }
         if (!quiet && output) process.stderr.write(`${output}\n`);
         rejectCommand(new Error(output || `Wrangler ${argumentsList.join(' ')} failed.`));
+      },
+    );
+  });
+}
+
+function runGitHub(argumentsList, { quiet = false, allowMissing = false } = {}) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    execFile(
+      'gh',
+      argumentsList,
+      { cwd: root, env: process.env, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (!error) {
+          if (!quiet && stdout) process.stdout.write(stdout);
+          if (!quiet && stderr) process.stderr.write(stderr);
+          resolveCommand(stdout);
+          return;
+        }
+        const output = commandOutput(Object.assign(error, { stdout, stderr }));
+        if (allowMissing && /(?:not found|http 404)/i.test(output)) {
+          console.log('  GitHub repository is already absent; nothing to delete.');
+          resolveCommand('');
+          return;
+        }
+        if (!quiet && output) process.stderr.write(`${output}\n`);
+        rejectCommand(new Error(output || `GitHub CLI ${argumentsList.join(' ')} failed.`));
       },
     );
   });
@@ -363,6 +401,21 @@ async function deleteD1Database(accountId, databaseName, credentials) {
   console.log(`  Deleted D1 database '${databaseName}'.`);
 }
 
+async function verifyGitHubRepositoryAccess(repository) {
+  try {
+    await runGitHub(['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner'], { quiet: true });
+  } catch (error) {
+    throw new Error(
+      `Cannot access GitHub repository '${repository}'. Run 'gh auth login' and ensure you have admin access: ${error.message}`,
+    );
+  }
+}
+
+async function deleteGitHubRepository(repository) {
+  await runGitHub(['repo', 'delete', repository, '--yes'], { allowMissing: true });
+  console.log(`  Deleted GitHub repository '${repository}'.`);
+}
+
 async function emptyR2(accountId, bucket, credentials, jurisdiction) {
   let deleted = 0;
   while (true) {
@@ -382,7 +435,7 @@ async function emptyR2(accountId, bucket, credentials, jurisdiction) {
   return deleted;
 }
 
-function printTargets(targets) {
+function printTargets(targets, githubRepository) {
   console.log('\nOpenWA Cloudflare cleanup targets');
   console.log(`  Worker: ${targets.worker}`);
   console.log(`  Durable Objects: ${targets.durableObjectClasses.join(', ') || '(none configured)'} (owned by Worker)`);
@@ -390,7 +443,8 @@ function printTargets(targets) {
   console.log(`  Queues: ${targets.queues.join(', ') || '(none configured)'}`);
   console.log(`  R2 bucket: ${targets.bucket ?? '(none configured)'}`);
   console.log(`  D1 database: ${targets.database ?? '(none configured)'}`);
-  console.log('\nNot touched: Git repository, Cloudflare Pages landing site, domains, or unrelated account resources.');
+  console.log(`  GitHub repository: ${githubRepository ?? '(not requested)'}`);
+  console.log('\nNot touched: local Git files, Cloudflare Pages landing site, domains, or unrelated account resources.');
 }
 
 async function attempt(label, action, failures) {
@@ -416,7 +470,7 @@ async function main() {
   if (jurisdiction && !['default', 'eu', 'us', 'fedramp'].includes(jurisdiction)) {
     throw new Error(`Unsupported R2 jurisdiction '${jurisdiction}' in wrangler.jsonc.`);
   }
-  printTargets(targets);
+  printTargets(targets, options.githubRepository);
 
   if (!options.yes) {
     console.log('\nPreview only: no Cloudflare resources were changed.');
@@ -431,6 +485,10 @@ async function main() {
     ? await inspectR2(accountId, targets.bucket, credentials, jurisdiction)
     : false;
   console.log(`  Cloudflare account: ${accountId}`);
+  if (options.githubRepository) {
+    console.log(`  Checking GitHub access to: ${options.githubRepository}`);
+    await verifyGitHubRepositoryAccess(options.githubRepository);
+  }
   console.log('  Preflight passed. Starting irreversible cleanup.');
 
   const failures = [];
@@ -491,7 +549,19 @@ async function main() {
     return;
   }
 
-  console.log('\nCleanup complete. The repository and wrangler.jsonc bindings remain ready for the next deployment test.');
+  if (options.githubRepository) {
+    await attempt(`Deleting GitHub repository '${options.githubRepository}'…`, () => (
+      deleteGitHubRepository(options.githubRepository)
+    ), failures);
+  }
+
+  if (failures.length > 0) {
+    console.error('\nCloudflare cleanup completed, but GitHub repository deletion failed.');
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('\nCleanup complete. Local project files and wrangler.jsonc bindings remain ready for the next deployment test.');
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

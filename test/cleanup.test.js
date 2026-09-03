@@ -8,6 +8,11 @@ describe('cleanup script safeguards', () => {
     expect(() => parseArguments(['--all'])).toThrow('Unknown option');
   });
 
+  it('accepts only an explicit, valid GitHub repository deletion target', () => {
+    expect(parseArguments(['--yes', '--delete-github-repo', 'owner/test-repo']).githubRepository).toBe('owner/test-repo');
+    expect(() => parseArguments(['--delete-github-repo', 'https://github.com/owner/test-repo'])).toThrow('exact GitHub owner/repository');
+  });
+
   it('selects only the known OpenWA bindings from Wrangler config', () => {
     const targets = targetsFromConfig({
       name: 'customer-core',
