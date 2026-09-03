@@ -1,4 +1,4 @@
-# Publishing OpenWA releases
+# Publishing ForgeScale Relay releases
 
 Customer deployment copies update only from published GitHub releases, never directly from `main`. This keeps every update versioned and reviewable.
 

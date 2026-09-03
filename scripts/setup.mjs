@@ -133,7 +133,7 @@ Options:
 
   console.log('\nApplying D1 migrations…');
   await run(['d1', 'migrations', 'apply', names.database, '--remote']);
-  console.log('\nDeploying OpenWA CORE…');
+  console.log('\nDeploying ForgeScale Relay Core…');
   await run(['deploy']);
   console.log('\nDeployment complete. Open the printed Worker URL to create the owner and connect WhatsApp.');
 }

@@ -1,8 +1,8 @@
 {
-  "name": "openwa-core",
+  "name": "forgescale-relay-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-deployable WhatsApp Business API core for Cloudflare",
+  "description": "ForgeScale Relay customer-owned WhatsApp Business platform for Cloudflare",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
@@ -30,13 +30,13 @@
   "cloudflare": {
     "bindings": {
       "DB": {
-        "description": "OpenWA data storage. Keep Create new selected; Cloudflare provisions it automatically."
+        "description": "ForgeScale Relay data storage. Keep Create new selected; Cloudflare provisions it automatically."
       },
       "MEDIA": {
         "description": "Customer-owned media storage. Keep Create new selected."
       },
       "JOBS_QUEUE": {
-        "description": "OpenWA background jobs. Keep Create new selected."
+        "description": "ForgeScale Relay background jobs. Keep Create new selected."
       },
       "DEAD_LETTER_QUEUE": {
         "description": "Failed-job safety queue. Keep Create new selected."

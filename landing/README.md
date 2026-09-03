@@ -1,6 +1,6 @@
-# OpenWA landing site
+# ForgeScale Relay landing site
 
-This folder is the public OpenWA marketing website. It is owned and deployed by the OpenWA project, not by customers who deploy OpenWA CORE.
+This folder is the public ForgeScale Relay marketing website. It is owned and deployed by the ForgeScale Relay project, not by customers who deploy ForgeScale Relay Core.
 
 ## Deploy to Cloudflare Pages
 
@@ -17,4 +17,4 @@ Alternatively, from the repository root:
 npm run landing:deploy
 ```
 
-The customer-facing **Deploy to Cloudflare** button in this site deploys the ROOT OpenWA Worker project into the customer’s own Cloudflare account. Do not point it to this `landing/` directory.
+The customer-facing **Deploy to Cloudflare** button in this site deploys the ROOT ForgeScale Relay Worker project into the customer’s own Cloudflare account. Do not point it to this `landing/` directory.

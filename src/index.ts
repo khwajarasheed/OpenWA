@@ -147,7 +147,7 @@ type DashboardUser = { id: string; access_subject?: string; email: string | null
 
 async function handleDashboardApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (!['GET', 'HEAD'].includes(request.method) && !validDashboardMutation(request, url)) {
-    return error(403, 'invalid_request_origin', 'Dashboard changes must come from this OpenWA installation');
+    return error(403, 'invalid_request_origin', 'Dashboard changes must come from this ForgeScale Relay installation');
   }
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/bootstrap') {
     const localUser = await localSessionUser(request, env);
@@ -172,7 +172,7 @@ async function handleDashboardApi(request: Request, env: Env, url: URL): Promise
     const identity = await accessIdentity(request, env);
     if (identity) user = await dashboardUser(identity.subject, identity.email, env);
   }
-  if (!user) return error(401, 'dashboard_login_required', 'Sign in to access the OpenWA dashboard');
+  if (!user) return error(401, 'dashboard_login_required', 'Sign in to access the ForgeScale Relay dashboard');
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/state') return dashboardState(user, env);
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/messages') return listMessages(url, env);
   if (request.method === 'GET' && url.pathname === '/v1/dashboard/contacts') return listContacts(url, env);
@@ -496,7 +496,7 @@ async function validateMessage(input: MessageInput, env: Env): Promise<string | 
     const connection = await env.DB.prepare(
       `SELECT 1 FROM whatsapp_connections WHERE phone_number_id = ? AND status IN ('validated', 'connected') LIMIT 1`
     ).bind(input.phone_number_id).first().catch(() => null);
-    if (!connection) return 'phone_number_id has not been connected in the OpenWA dashboard';
+    if (!connection) return 'phone_number_id has not been connected in the ForgeScale Relay dashboard';
   }
   if (!/^\d{6,20}$/.test(input.to)) return 'to must be a WhatsApp ID containing 6-20 digits';
   if (input.type === 'text' && (!input.text?.body || input.text.body.length > 4096)) return 'text.body is required and must be no longer than 4096 characters';

@@ -1,4 +1,4 @@
-name: OpenWA upstream updates
+name: ForgeScale Relay upstream updates
 
 on:
   schedule:
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   update:
-    name: Check OpenWA release
+    name: Check ForgeScale Relay release
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -56,26 +56,26 @@ jobs:
           git pull --ff-only origin "$default_branch"
 
           if git merge-base --is-ancestor "$target_ref" HEAD; then
-            echo "OpenWA ${latest_tag} is already included in this deployment copy."
+            echo "ForgeScale Relay ${latest_tag} is already included in this deployment copy."
             exit 0
           fi
 
           manifest="$(git show "${target_ref}:openwa-release.json" 2>/dev/null || true)"
           if [[ -z "$manifest" ]]; then
-            echo "Upstream release ${latest_tag} has no OpenWA release manifest; refusing to update."
+            echo "Upstream release ${latest_tag} has no ForgeScale Relay release manifest; refusing to update."
             exit 1
           fi
 
           compatible_auto_update="$(jq -r '.schema_version == 1 and .compatibility == "patch" and .auto_update == true' <<<"$manifest")"
           if [[ "$OPENWA_UPDATE_MODE" == "auto" && "$compatible_auto_update" != "true" ]]; then
-            echo "OpenWA ${latest_tag} is not explicitly marked as a compatible automatic update; creating a review PR instead."
+            echo "ForgeScale Relay ${latest_tag} is not explicitly marked as a compatible automatic update; creating a review PR instead."
             OPENWA_UPDATE_MODE=review
           fi
 
           safe_tag="$(sed 's/[^A-Za-z0-9._-]/-/g' <<<"$latest_tag")"
           branch="openwa/update-${safe_tag}"
           if gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq 'length' | grep -qx '1'; then
-            echo "An OpenWA update PR for ${latest_tag} is already open."
+            echo "A ForgeScale Relay update PR for ${latest_tag} is already open."
             exit 0
           fi
 
@@ -87,7 +87,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git merge --no-ff --no-edit "$target_ref"; then
             git merge --abort || true
-            echo "::warning::OpenWA ${latest_tag} conflicts with local changes. Resolve it in a review PR."
+            echo "::warning::ForgeScale Relay ${latest_tag} conflicts with local changes. Resolve it in a review PR."
             exit 1
           fi
           cp /tmp/customer-wrangler.jsonc wrangler.jsonc
@@ -97,7 +97,7 @@ jobs:
           fi
           git push --force-with-lease origin "${branch}"
 
-          pr_url="$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$default_branch" --head "$branch" --title "Update OpenWA to ${latest_tag}" --body "Automated OpenWA update check.\n\n- Upstream: ${OPENWA_UPSTREAM}\n- Release: ${latest_tag}\n- Mode requested: ${OPENWA_UPDATE_MODE}\n- Customer Cloudflare binding IDs were preserved.\n\nReview the diff before merging. Cloudflare deploys after this PR is merged.")"
+          pr_url="$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$default_branch" --head "$branch" --title "Update ForgeScale Relay to ${latest_tag}" --body "Automated ForgeScale Relay update check.\n\n- Upstream: ${OPENWA_UPSTREAM}\n- Release: ${latest_tag}\n- Mode requested: ${OPENWA_UPDATE_MODE}\n- Customer Cloudflare binding IDs were preserved.\n\nReview the diff before merging. Cloudflare deploys after this PR is merged.")"
           echo "Created ${pr_url}"
 
           if [[ "$OPENWA_UPDATE_MODE" == "auto" ]]; then

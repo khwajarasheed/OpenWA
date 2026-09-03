@@ -1,4 +1,4 @@
-# Contributing to OpenWA
+# Contributing to ForgeScale Relay
 
 ## Before opening a pull request
 

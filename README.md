@@ -1,16 +1,16 @@
-# OpenWA CORE
+# ForgeScale Relay Core
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/khwajarasheed/OpenWA)
 
 > Pre-release software. Do not use it for production customer data until the Deploy Button, local owner authentication, and Meta integration have been validated end to end in a dedicated test account.
 
-OpenWA CORE is a self-deployable WhatsApp Business API for a customer-owned Cloudflare account. It connects directly to the customer’s Meta Cloud API credentials; it does not broker messages or add a charge to Meta message costs.
+ForgeScale Relay Core is a self-deployable WhatsApp Business API for a customer-owned Cloudflare account. It connects directly to the customer’s Meta Cloud API credentials; it does not broker messages or add a charge to Meta message costs.
 
 This repository provides signed Meta webhook ingress, D1 contact/conversation/message storage, queue-backed outbound dispatch, per-phone rate coordination through Durable Objects, text/template send APIs, template synchronization, local API tokens, a self-hosted dashboard, and guided WhatsApp connection onboarding.
 
 ## Project website
 
-The OpenWA project landing page lives in [`landing/`](./landing). It is a separate static Cloudflare Pages site operated by the project owner; customers do not deploy it. See [`landing/README.md`](./landing/README.md) for deployment settings.
+The ForgeScale Relay project landing page lives in [`landing/`](./landing). It is a separate static Cloudflare Pages site operated by the project owner; customers do not deploy it. See [`landing/README.md`](./landing/README.md) for deployment settings.
 
 ## Data flow
 
@@ -24,25 +24,25 @@ CORE intentionally uses at-least-once processing. Incoming webhook deliveries ar
 
 ## One-click customer deployment
 
-Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download, terminal, OpenWA secret, WABA ID, or phone-number ID is needed during deployment.
+Click **Deploy to Cloudflare** above. Cloudflare creates a copy in your GitHub account, provisions D1, R2, Queues, and Durable Objects in your own Cloudflare account, then deploys the Worker. No local download, terminal, ForgeScale Relay secret, WABA ID, or phone-number ID is needed during deployment.
 
-The deployment screen has no OpenWA variables for the customer to fill. Keep the automatically selected D1 database, R2 bucket, jobs queue, and dead-letter queue, leave **Protect with Cloudflare Access** off, then click deploy. Protecting the whole Worker would also block Meta's public webhook; path-specific Access can be added later. On first use, OpenWA generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to OpenWA infrastructure; it encrypts Meta credentials before they are stored in D1.
+The deployment screen has no ForgeScale Relay variables for the customer to fill. Keep the automatically selected D1 database, R2 bucket, jobs queue, and dead-letter queue, leave **Protect with Cloudflare Access** off, then click deploy. Protecting the whole Worker would also block Meta's public webhook; path-specific Access can be added later. On first use, ForgeScale Relay generates an installation-only encryption key inside a customer-owned Durable Object. The key is not displayed, stored in Git, or sent to ForgeScale Relay infrastructure; it encrypts Meta credentials before they are stored in D1.
 
-After deployment, click the deployed Worker URL, create the installation’s local owner account, and continue directly into the dashboard. A new installation opens with a safe, fully navigable sample workspace so customers can explore messages, contacts, conversations, templates, API access, activity, and data management before connecting WhatsApp. Password verification and sessions remain inside the customer’s Worker and D1 database. Meta credentials are encrypted locally before D1 storage and are not sent to OpenWA-operated infrastructure.
+After deployment, click the deployed Worker URL, create the installation’s local owner account, and continue directly into the dashboard. A new installation opens with a safe, fully navigable sample workspace so customers can explore messages, contacts, conversations, templates, API access, activity, and data management before connecting WhatsApp. Password verification and sessions remain inside the customer’s Worker and D1 database. Meta credentials are encrypted locally before D1 storage and are not sent to ForgeScale Relay-operated infrastructure.
 
 Create the owner immediately after a new deployment and do not share the uninitialized Worker URL. The first person to complete this one-time screen becomes the installation owner. Password recovery is not yet implemented in this pre-release version.
 
-**Connect WhatsApp** remains available from the dashboard at all times. When real Meta activation is complete, OpenWA offers a one-time **Start with empty workspace** choice that removes only the supplied demo records and leaves the owner and live connection intact. The dashboard then becomes a normal clean production workspace.
+**Connect WhatsApp** remains available from the dashboard at all times. When real Meta activation is complete, ForgeScale Relay offers a one-time **Start with empty workspace** choice that removes only the supplied demo records and leaves the owner and live connection intact. The dashboard then becomes a normal clean production workspace.
 
 Cloudflare Access can be added later as an optional outer security layer. It is not required for first-run onboarding.
 
 ## Updates
 
-The Deploy Button creates a customer-owned copy of this repository and Cloudflare deploys commits pushed to that copy. The copied repository includes an **OpenWA upstream updates** GitHub Actions workflow, which checks once a day for published OpenWA releases.
+The Deploy Button creates a customer-owned copy of this repository and Cloudflare deploys commits pushed to that copy. The copied repository includes a **ForgeScale Relay upstream updates** GitHub Actions workflow, which checks once a day for published ForgeScale Relay releases.
 
 The default **automatic** mode creates and merges an auditable pull request for releases whose `openwa-release.json` explicitly declares `compatibility: "patch"` and `auto_update: true`; Cloudflare then deploys the merge automatically. Customers do not need to use GitHub or a terminal for those safe updates. Major versions, migration-bearing releases, binding changes, or unmarked releases always become a review pull request instead. Customers who prefer approvals for every release can set the repository variable `OPENWA_UPDATE_MODE` to `review` once in GitHub.
 
-Customers may set `OPENWA_UPSTREAM_REPOSITORY` once if they use an approved OpenWA fork. The workflow preserves the copied installation's `wrangler.jsonc`, so generated D1/R2/Queue bindings are never replaced by the portable source template. It has no access to WhatsApp content or Cloudflare credentials; GitHub Actions changes only the customer's own GitHub copy. Existing installations need this workflow added to their copied repository once; new Deploy Button installations receive it automatically.
+Customers may set `OPENWA_UPSTREAM_REPOSITORY` once if they use an approved ForgeScale Relay fork. The workflow preserves the copied installation's `wrangler.jsonc`, so generated D1/R2/Queue bindings are never replaced by the portable source template. It has no access to WhatsApp content or Cloudflare credentials; GitHub Actions changes only the customer's own GitHub copy. Existing installations need this workflow added to their copied repository once; new Deploy Button installations receive it automatically.
 
 Project maintainers publish versioned GitHub releases deliberately; see [the release policy](./docs/releasing.md). No release is eligible for automatic customer deployment unless the release manifest explicitly marks it as a backward-compatible patch with no migration work.
 

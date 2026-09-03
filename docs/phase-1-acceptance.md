@@ -6,12 +6,12 @@ Run this only in a dedicated customer-owned Cloudflare test account and Meta tes
 
 1. In the source repository, run `npm run check`, `npm test`, and `npm run deploy -- --dry-run`.
 2. From a fresh GitHub and Cloudflare test account, use the README's Deploy to Cloudflare button. Do not clone the repository or pre-create resources.
-3. Confirm the deployment screen requests no OpenWA variable, encryption key, Meta credential, WABA ID, or phone-number ID.
+3. Confirm the deployment screen requests no ForgeScale Relay variable, encryption key, Meta credential, WABA ID, or phone-number ID.
 4. Keep the generated D1 database, R2 bucket, jobs queue, dead-letter queue, and Durable Object bindings selected. Leave whole-Worker Cloudflare Access protection off so Meta can reach `/webhooks/meta`. Confirm all three D1 migrations run and the Worker deploys without a partially updated trigger error.
 5. Confirm the deployment result presents a clickable Worker URL. Confirm `GET /health`, `GET /ready`, and `GET /version` each return `200`.
 6. Open the Worker URL, create the local owner, and enter the dashboard without setting up Cloudflare Access or running a command.
 7. Register the displayed `/webhooks/meta` URL and verification token in Meta and select the `messages` field. A valid `hub.challenge` must return `200`; a wrong verification token must return `403`. Confirm the dashboard detects successful endpoint verification.
-8. Enter a WABA ID, system-user token, and app secret in the dashboard. Confirm OpenWA lists the WABA's phone numbers, selects the sole result automatically or asks only when there are multiple, and subscribes the app to the WABA with the single connection action.
+8. Enter a WABA ID, system-user token, and app secret in the dashboard. Confirm ForgeScale Relay lists the WABA's phone numbers, selects the sole result automatically or asks only when there are multiple, and subscribes the app to the WABA with the single connection action.
 9. Confirm the dashboard reaches Connected without a refresh, hides onboarding, and leaves a working **Manage connection** action.
 
 ## Security gate

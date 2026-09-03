@@ -426,7 +426,7 @@ async function emptyR2(accountId, bucket, credentials, jurisdiction) {
 }
 
 function printTargets(targets, githubRepository) {
-  console.log('\nOpenWA Cloudflare cleanup targets');
+  console.log('\nForgeScale Relay Cloudflare cleanup targets');
   console.log(`  Worker: ${targets.worker}`);
   console.log(`  Durable Objects: ${targets.durableObjectClasses.join(', ') || '(none configured)'} (owned by Worker)`);
   console.log(`  Queue consumer to remove: ${targets.jobsQueue ? `${targets.worker} <- ${targets.jobsQueue}` : '(none configured)'}`);
@@ -489,7 +489,7 @@ async function main() {
   }, failures);
 
   if (failures.length > 0) {
-    throw new Error('The OpenWA Queue consumer could not be removed, so data resources were left intact.');
+    throw new Error('The ForgeScale Relay Queue consumer could not be removed, so data resources were left intact.');
   }
 
   let workerDeleted = true;

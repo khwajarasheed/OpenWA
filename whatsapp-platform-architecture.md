@@ -181,7 +181,7 @@ Cloudflare’s Deploy Button can clone a public GitHub/GitLab repository, config
 
 ### Deployment paths
 
-1. **Deploy Button:** default community path; the customer authenticates directly with Cloudflare, keeps the preselected resources, and deploys without entering OpenWA or Meta variables.
+1. **Deploy Button:** default community path; the customer authenticates directly with Cloudflare, keeps the preselected resources, and deploys without entering ForgeScale Relay or Meta variables.
 2. **Wrangler installer:** advanced operator path using Cloudflare OAuth where possible; creates resources, applies migrations, deploys, and directs the operator to the same first-run dashboard.
 3. **Terraform plus Wrangler:** enterprise path; Terraform owns durable resource configuration, Wrangler deploys Worker/migrations. Secrets must come from customer CI secrets or interactive input, never Terraform state.
 

@@ -13,7 +13,7 @@ describe('cleanup script safeguards', () => {
     expect(() => parseArguments(['--delete-github-repo', 'https://github.com/owner/test-repo'])).toThrow('exact GitHub owner/repository');
   });
 
-  it('selects only the known OpenWA bindings from Wrangler config', () => {
+  it('selects only the known ForgeScale Relay bindings from Wrangler config', () => {
     const targets = targetsFromConfig({
       name: 'customer-core',
       d1_databases: [
