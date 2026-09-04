@@ -19,6 +19,9 @@ describe('self-hosted onboarding dashboard', () => {
     expect(html).toContain('password_verifier:await derive');
     expect(html).toContain('password_iterations:600000');
     expect(html).toContain('Start with empty workspace');
+    expect(html).toContain("'/v1/dashboard/phone-numbers'");
+    expect(html).toContain('Discover phone numbers');
+    expect(html).not.toContain('Phone number ID</label>');
   });
 
   it('renders syntactically valid client JavaScript', () => {

@@ -46,7 +46,13 @@ export default {
     for (const message of batch.messages) {
       try {
         if (message.body.type === 'inbound_webhook') await processWebhook(message.body, env);
-        if (message.body.type === 'outbound_dispatch') await dispatchOutbound(message.body, env);
+        if (message.body.type === 'outbound_dispatch') {
+          const retryAfterSeconds = await dispatchOutbound(message.body, env);
+          if (retryAfterSeconds !== null) {
+            message.retry({ delaySeconds: retryAfterSeconds });
+            continue;
+          }
+        }
         if (message.body.type === 'template_sync') await syncTemplates(env);
         message.ack();
       } catch (cause) {
@@ -693,10 +699,14 @@ async function persistStatus(status: NonNullable<WebhookValue['statuses']>[numbe
   }
 }
 
-async function dispatchOutbound(job: Extract<QueueJob, { type: 'outbound_dispatch' }>, env: Env): Promise<void> {
+async function dispatchOutbound(job: Extract<QueueJob, { type: 'outbound_dispatch' }>, env: Env): Promise<number | null> {
   const dispatcher = env.PHONE_DISPATCHER.get(env.PHONE_DISPATCHER.idFromName(job.phoneNumberId));
   const result = await dispatcher.fetch('https://phone-dispatcher/dispatch', { method: 'POST', body: JSON.stringify(job) });
-  if (result.status >= 500 || result.status === 429) throw new Error(`Dispatcher deferred job: ${result.status}`);
+  if (result.status >= 500 || result.status === 429) {
+    const body: { retryAfterSeconds?: number } = await result.json<{ retryAfterSeconds?: number }>().catch(() => ({}));
+    return Math.max(1, Math.min(300, body.retryAfterSeconds ?? 5));
+  }
+  return null;
 }
 
 async function syncTemplates(env: Env): Promise<void> {
