@@ -1,0 +1,6 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "openwa-landing",
+  "compatibility_date": "2026-09-02",
+  "pages_build_output_dir": "."
+}

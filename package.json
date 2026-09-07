@@ -1,0 +1,46 @@
+{
+  "name": "forgescale-relay-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ForgeScale Relay customer-owned WhatsApp Business platform for Cloudflare",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "landing:dev": "wrangler pages dev landing --config landing/wrangler.jsonc",
+    "landing:deploy": "cd landing && wrangler pages deploy . --project-name openwa",
+    "setup": "node scripts/setup.mjs",
+    "cleanup": "node scripts/cleanup.mjs",
+    "predeploy": "npm run check && npm test",
+    "deploy": "node scripts/deploy.mjs",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260902.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.128.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "workerd@1.20260831.1": true
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "ForgeScale Relay data storage. Keep Create new selected; Cloudflare provisions it automatically."
+      },
+      "MEDIA": {
+        "description": "Customer-owned media storage. Keep Create new selected."
+      },
+      "JOBS_QUEUE": {
+        "description": "ForgeScale Relay background jobs. Keep Create new selected."
+      },
+      "DEAD_LETTER_QUEUE": {
+        "description": "Failed-job safety queue. Keep Create new selected."
+      }
+    }
+  }
+}

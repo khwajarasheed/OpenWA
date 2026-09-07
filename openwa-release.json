@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "version": "0.1.0",
+  "compatibility": "manual_review_required",
+  "auto_update": false,
+  "notes": "This pre-release version must be reviewed before deployment."
+}
